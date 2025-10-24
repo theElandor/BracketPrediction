@@ -10,6 +10,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .builder import LOSSES
 
+@LOSSES.register_module()
+class MSELoss(nn.MSELoss):
+    pass
 
 @LOSSES.register_module()
 class CrossEntropyLoss(nn.Module):

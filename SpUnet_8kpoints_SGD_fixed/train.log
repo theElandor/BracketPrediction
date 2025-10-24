@@ -1,0 +1,100 @@
+[2025-10-23 10:48:16,259 INFO train.py line 136 3414288] => Loading config ...
+[2025-10-23 10:48:16,259 INFO train.py line 138 3414288] Save path: SpUnet_8kpoints_SGD_fixed
+[2025-10-23 10:48:16,348 INFO train.py line 139 3414288] Config:
+weight = None
+resume = False
+evaluate = True
+test_only = False
+seed = 19281819
+save_path = 'SpUnet_8kpoints_SGD_fixed'
+num_worker = 4
+batch_size = 2
+gradient_accumulation_steps = 1
+batch_size_val = None
+batch_size_test = None
+epoch = 100
+eval_epoch = 100
+clip_grad = None
+sync_bn = False
+enable_amp = True
+amp_dtype = 'float16'
+empty_cache = False
+empty_cache_per_epoch = False
+find_unused_parameters = False
+enable_wandb = True
+wandb_project = 'bracket_point_prediction'
+wandb_key = 'aa5065e448806f5c4fc22ae91586d8ecd5183c9c'
+mix_prob = 0
+param_dicts = None
+hooks = [
+    dict(type='CheckpointLoader'),
+    dict(type='IterationTimer', warmup_iter=2),
+    dict(type='InformationWriter'),
+    dict(type='DisplacementEvaluator'),
+    dict(type='CheckpointSaver', save_freq=None)
+]
+train = dict(type='DefaultTrainer')
+test = dict(type='SemSegTester', verbose=True)
+model = dict(
+    type='VoxelBracketPredictor',
+    backbone=dict(
+        type='SpUNet-v1m1',
+        in_channels=3,
+        num_classes=0,
+        channels=(32, 64, 128, 256, 256, 128, 96, 96),
+        layers=(2, 3, 4, 6, 2, 2, 2, 2),
+        cls_mode=True),
+    backbone_out_channels=256,
+    output_dim=3)
+optimizer = dict(
+    type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001, nesterov=True)
+scheduler = dict(type='MultiStepLR', milestones=[0.6, 0.8], gamma=0.1)
+dataset_type = 'BracketPointDataset'
+data_root = '/work/grana_maxillo/Mlugli/brackets_melted/flattened'
+data = dict(
+    train=dict(
+        type='BracketPointDataset',
+        split='train',
+        data_root='/work/grana_maxillo/Mlugli/brackets_melted/flattened',
+        transform=[
+            dict(
+                type='GridSample',
+                grid_size=0.005,
+                hash_type='fnv',
+                mode='train',
+                return_grid_coord=True),
+            dict(type='ToTensor'),
+            dict(
+                type='Collect',
+                keys=['coord', 'grid_coord', 'bracket_point', 'offset'],
+                feat_keys=['coord'])
+        ],
+        test_mode=False,
+        loop=1),
+    val=dict(
+        type='BracketPointDataset',
+        split='val',
+        data_root='/work/grana_maxillo/Mlugli/brackets_melted/flattened',
+        transform=[
+            dict(
+                type='GridSample',
+                grid_size=0.005,
+                hash_type='fnv',
+                mode='train',
+                return_grid_coord=True),
+            dict(type='ToTensor'),
+            dict(
+                type='Collect',
+                keys=['coord', 'grid_coord', 'bracket_point', 'offset'],
+                feat_keys=['coord'])
+        ],
+        test_mode=False))
+num_worker_per_gpu = 4
+batch_size_per_gpu = 2
+batch_size_val_per_gpu = 1
+batch_size_test_per_gpu = 1
+
+[2025-10-23 10:48:16,348 INFO train.py line 140 3414288] => Building model ...
+[2025-10-23 10:48:18,283 INFO train.py line 260 3414288] Num params: 26021091
+[2025-10-23 10:48:19,580 INFO train.py line 142 3414288] => Building writer ...
+[2025-10-23 10:48:19,745 INFO train.py line 270 3414288] Tensorboard writer logging dir: SpUnet_8kpoints_SGD_fixed

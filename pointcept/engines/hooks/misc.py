@@ -551,3 +551,63 @@ class GarbageHandler(HookBase):
     def after_train(self):
         gc.collect()
         torch.cuda.empty_cache()
+
+
+@HOOKS.register_module()  
+class DisplacementEvaluator(HookBase):  
+    def before_train(self):  
+        # Define metric step for WandB  
+        if self.trainer.writer is not None and self.trainer.cfg.enable_wandb:  
+            wandb.define_metric("val/*", step_metric="Epoch")  
+      
+    def after_epoch(self):  
+        if self.trainer.cfg.evaluate:  
+            self.eval()  
+      
+    def eval(self):  
+        self.trainer.logger.info(">>>>>>>>>>>>>>>> Start Evaluation >>>>>>>>>>>>>>>>")  
+        self.trainer.model.eval()  
+          
+        mse_sum = 0.0  
+        count = 0  
+          
+        for i, input_dict in enumerate(self.trainer.val_loader):  
+            for key in input_dict.keys():  
+                if isinstance(input_dict[key], torch.Tensor):  
+                    input_dict[key] = input_dict[key].cuda(non_blocking=True)  
+              
+            with torch.no_grad():  
+                output_dict = self.trainer.model(input_dict)  
+              
+            loss = output_dict["loss"]  
+            mse_sum += loss.item()  
+            count += 1  
+              
+            self.trainer.storage.put_scalar("val_loss", loss.item())  
+          
+        mse_avg = mse_sum / count  
+        self.trainer.logger.info(f"Val result: MSE {mse_avg:.6f}")  
+          
+        current_epoch = self.trainer.epoch + 1  
+        if self.trainer.writer is not None:  
+            self.trainer.writer.add_scalar("val/mse", mse_avg, current_epoch)  
+              
+            # Add WandB logging  
+            if self.trainer.cfg.enable_wandb:  
+                wandb.log(  
+                    {  
+                        "Epoch": current_epoch,  
+                        "val/mse": mse_avg,  
+                    },  
+                    step=wandb.run.step,  
+                )  
+          
+        # Store NEGATIVE MSE so that "higher is better" logic works  
+        self.trainer.comm_info["current_metric_value"] = -mse_avg  
+        self.trainer.comm_info["current_metric_name"] = "MSE"  
+          
+        self.trainer.logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")  
+      
+    def after_train(self):  
+        best_mse = -self.trainer.best_metric_value  
+        self.trainer.logger.info(f"Best MSE: {best_mse:.6f}")
