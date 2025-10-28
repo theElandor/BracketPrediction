@@ -1,4 +1,4 @@
-# Pointcept-Bracket — Regression for Bracket Installation Point Prediction
+# 🦷​ Pointcept-Bracket - Dental Bracket Installation Point Prediction
 
 **Pointcept-Bracket** is a customized fork of [Pointcept](https://github.com/Pointcept/Pointcept), fine-tuned for **regression-based prediction of bracket installation points** on 3D data.  
 This repository extends the original Pointcept framework with specialized components for regression tasks, evaluation, and visualization.
