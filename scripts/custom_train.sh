@@ -6,8 +6,8 @@
 export CUDA_VISIBLE_DEVICES=0
 
 # Configuration
-CONFIG="configs/brackets/SpUnet.py"
-EXP_NAME="SpUnet_8kpoints_SGD"
+CONFIG="configs/brackets/PointTransformer.py"
+EXP_NAME="PointTransformer_plot"
 NUM_GPU=1
 
 # Training command

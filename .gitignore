@@ -4,10 +4,12 @@ __pycache__
 **/*.egg-info/
 **/dist/
 *.so
+pointcept-brackets-venv
+log
 exp
 weights
 data
-log
+logs
 outputs/
 .vscode
 .idea

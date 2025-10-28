@@ -1,4 +1,4 @@
-name: pointcept-torch2.5.0-cu12.4
+name: pointcept-brackets-venv
 channels:
   - pytorch
   - nvidia/label/cuda-12.4.1

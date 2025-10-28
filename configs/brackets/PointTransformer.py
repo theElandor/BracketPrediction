@@ -27,17 +27,20 @@ wandb_project = "bracket_point_prediction"
 # -----------------------------
 
 model = dict(
-    type="VoxelBracketPredictor",  
-    backbone=dict(  
-        type="SpUNet-v1m1",  
-        in_channels=3,  # xyz coordinates only  
-        num_classes=0,  
-        channels=(32, 64, 128, 256, 256, 128, 96, 96),
-        layers=(2, 3, 4, 6, 2, 2, 2, 2),
-        cls_mode = True,
-    ),  
-    backbone_out_channels=256,
+    type="VoxelBracketPredictor",
+    backbone=dict(                          #  Backbone: Point Transformer V3 (v1m1)
+        type="PT-v3m1",                     # as in cls-ptv3-v1m1-0-base
+        in_channels=3,                      # 3 xyz 
+        enc_channels=(16, 32, 48, 64, 128),
+        enc_num_head=(1, 2, 3, 4, 8),
+        dec_channels=(32, 32, 64, 96),
+        dec_num_head=(2, 2, 4, 6),
+        enable_flash=False,                 # True if AMPERE gpu arch
+        cls_mode=True,
+    ),
+    backbone_out_channels=128,
     save_predictions = False,
+    # output_dir will be unused if save_predictions is not set.
     output_dir = "/work/grana_maxillo/Mlugli/brackets_melted/model_predictions/json",
     output_dim=3,
 )  
@@ -64,21 +67,21 @@ data = dict(
         type=dataset_type,  
         split="train",  
         data_root=data_root,
+        plot=False,
         transform=[  
             #dict(type="CenterShift", apply_z=True),
-            dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line  
+            dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),
             dict(type="RandomRotate", angle=[-0.1, 0.1], center = [0,0,0], axis="z", p=0.5),  
             dict(type="RandomScale", scale=[0.95, 1.05]),
             dict(type="RandomShift", shift=((-0.02,0.02),)*3),
             dict(type="RandomDropout", dropout_ratio=0.5, dropout_application_ratio=0.5),
             dict(  
                 type="GridSample",
-                grid_size=0.005,
+                grid_size=0.005,  
                 hash_type="fnv",
                 mode="train", 
                 return_grid_coord=True,  # This generates grid_coord  
-            ),  
-            #dict(type="CenterShift", apply_z=False),
+            ),
             dict(type="ToTensor"),  
             dict(  
                 type="Collect",  
@@ -100,7 +103,7 @@ data = dict(
                 grid_size=0.005,  
                 hash_type="fnv",  
                 mode="train",  
-                return_grid_coord=True,
+                return_grid_coord=True,  # This generates grid_coord  
             ),
             dict(type="ToTensor"),  
             dict(
@@ -110,7 +113,8 @@ data = dict(
             ),  
         ],  
         test_mode=False,  
-    ),
+    ),  
+    # inference
     test=dict(  
         type=dataset_type,  
         data_root=data_root,  

@@ -4,7 +4,7 @@ Main Testing Script
 Author: Xiaoyang Wu (xiaoyang.wu.cs@gmail.com)
 Please cite our work if the code is helpful to you.
 """
-
+import debugpy
 from pointcept.engines.defaults import (
     default_argument_parser,
     default_config_parser,
@@ -23,6 +23,12 @@ def main_worker(cfg):
 
 def main():
     args = default_argument_parser().parse_args()
+    if args.debug == True:
+        print("Hello, happy debugging.")
+        debugpy.listen(("0.0.0.0", 5681))
+        print(">>> Debugger is listening on port 5681. Waiting for client to attach...")
+        debugpy.wait_for_client()
+        print(">>> Debugger attached. Resuming execution.")
     cfg = default_config_parser(args.config_file, args.options)
 
     launch(

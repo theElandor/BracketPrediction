@@ -95,7 +95,40 @@ class TesterBase:
         return model
 
     def build_test_loader(self):
-        test_dataset = build_dataset(self.cfg.data.test)
+        # Validate test dataset config early to provide a clearer error
+        # message when the user misconfigures the config file.
+        test_cfg = None
+        try:
+            test_cfg = self.cfg.data.test
+        except Exception:
+            # cfg.data might not expose attributes like a dict; try mapping access
+            try:
+                test_cfg = self.cfg.data["test"]
+            except Exception:
+                test_cfg = None
+
+        if test_cfg is None:
+            # Try a reasonable fallback: use validation dataset if test is missing
+            val_cfg = None
+            try:
+                val_cfg = self.cfg.data.val
+            except Exception:
+                try:
+                    val_cfg = self.cfg.data["val"]
+                except Exception:
+                    val_cfg = None
+
+            if val_cfg is not None:
+                self.logger.warning(
+                    "cfg.data.test is None, falling back to cfg.data.val for testing."
+                )
+                test_dataset = build_dataset(val_cfg)
+            else:
+                raise RuntimeError(
+                    "cfg.data.test is None or missing — please set `data.test` in your config to a dataset dict."
+                )
+        else:
+            test_dataset = build_dataset(test_cfg)
         if comm.get_world_size() > 1:
             test_sampler = torch.utils.data.distributed.DistributedSampler(test_dataset)
         else:
@@ -1315,3 +1348,70 @@ class InsSegTester(TesterBase):
     def collate_fn(batch):
         # Restrict to bs 1
         return batch[0]
+    
+@TESTERS.register_module()  
+class BracketTester(TesterBase):  
+    def test(self):  
+        assert self.test_loader.batch_size == 1  
+        self.model.eval()  
+        results = []  
+        predictions_dict = {}  # Dictionary to store all predictions  
+        
+        # Create results directory in model folder  
+        save_path = os.path.join(self.cfg.save_path, "results")  
+        os.makedirs(save_path, exist_ok=True)  
+        
+        for idx, data_dict in enumerate(self.test_loader):  
+            data_dict = data_dict[0]  
+            fragment_list = data_dict.pop("fragment_list")  
+            bracket_point_gt = data_dict.pop("bracket_point")  
+            data_name = data_dict.pop("name")  
+            
+            # Move ground truth to GPU  
+            if isinstance(bracket_point_gt, np.ndarray):  
+                bracket_point_gt = torch.from_numpy(bracket_point_gt).cuda()  
+            elif isinstance(bracket_point_gt, torch.Tensor):  
+                bracket_point_gt = bracket_point_gt.cuda()  
+            
+            pred_sum = torch.zeros(1, 3).cuda()  
+            
+            for fragment in fragment_list:  
+                for key in fragment.keys():  
+                    if isinstance(fragment[key], torch.Tensor):  
+                        fragment[key] = fragment[key].cuda(non_blocking=True)  
+                
+                with torch.no_grad():  
+                    output = self.model(fragment)  
+                    pred_sum += output["bracket_point_pred"]  
+            
+            pred = (pred_sum / len(fragment_list)).squeeze(0).cpu()  
+            
+            # Store prediction in dictionary  
+            predictions_dict[data_name] = pred.numpy().tolist()  
+            
+            # Calculate error  
+            error = torch.norm(pred - bracket_point_gt.cpu()).item()  
+            results.append({"name": data_name, "error": error})  
+            
+            self.logger.info(f"Test: {data_name}, Error: {error:.4f}")  
+        
+        # Save all predictions to single JSON file  
+        predictions_file = os.path.join(save_path, "predictions.json")  
+        with open(predictions_file, "w") as f:  
+            json.dump(predictions_dict, f, indent=4)  
+        
+        # Save summary with errors  
+        summary_file = os.path.join(save_path, "summary.json")  
+        with open(summary_file, "w") as f:  
+            json.dump({  
+                "results": results,  
+                "mean_error": float(np.mean([r["error"] for r in results]))  
+            }, f, indent=4)  
+        
+        mean_error = np.mean([r["error"] for r in results])  
+        self.logger.info(f"Mean Error: {mean_error:.4f}")  
+        self.logger.info(f"Predictions saved to: {predictions_file}")
+      
+    @staticmethod  
+    def collate_fn(batch):  
+        return batch  # Don't collate, just return the list

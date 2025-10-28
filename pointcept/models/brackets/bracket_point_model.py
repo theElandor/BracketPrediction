@@ -30,10 +30,10 @@ class VoxelBracketPredictor(nn.Module):
         backbone,  
         backbone_out_channels=96,  
         output_dim=3,  # 3D point coordinates
-        save_predictions=False, 
+        save_predictions=False,
         output_dir:str = "output"
     ):  
-        super().__init__()  
+        super().__init__()
           
         self.backbone = build_model(backbone)  
         self.output_dir = output_dir
@@ -103,10 +103,13 @@ class VoxelBracketPredictor(nn.Module):
      
         # Predict 3D point    
         bracket_point_pred = self.head(feat)    
-        # save bracket_point_pred somewhere
-        # apparently in the out dictionary we only need the loss value?
-        # If you add   
-        out = {} # Add predictions to output
+        # during training we just need to store the loss value in the output dict,
+        # while during testing we also need to store the prediction itself so that the
+        # tester can access the field.
+        if not self.training:
+            out = {"bracket_point_pred":bracket_point_pred} # Add predictions to output
+        else:
+            out = {}
 
         # Compute MSE loss if ground truth available    
         if "bracket_point" in input_dict:
@@ -115,7 +118,7 @@ class VoxelBracketPredictor(nn.Module):
             # causes an error in nn.functional.mse_loss.
             # So we need to reshape the target tensor. (I believe is what we need to do)
             target = input_dict["bracket_point"].view_as(bracket_point_pred)
-            if self.save_predictions and not self.training:
+            if self.save_predictions and not self.training: # plot only in inference.
                 self._save(input_dict, bracket_point_pred)
             loss = nn.functional.mse_loss(bracket_point_pred, target)
             out["loss"] = loss

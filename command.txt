@@ -1,0 +1,3 @@
+TRAIN
+python tools/train.py --config-file /homes/mlugli/BracketPrediction/configs/brackets/SpUnet.py --num-gpus 1 --options save_path=/homes/mlugli/BracketPrediction/exp/brackets/new_loader
+TEST

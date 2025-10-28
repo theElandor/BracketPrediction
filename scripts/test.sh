@@ -5,11 +5,11 @@ PYTHON=python
 
 TEST_CODE=test.py
 
-DATASET=scannet
-CONFIG="None"
-EXP_NAME=debug
+DATASET=brackets
+CONFIG="PointTranformer"
+EXP_NAME=PointTransformer_test
 WEIGHT=model_best
-NUM_GPU=None
+NUM_GPU=1
 NUM_MACHINE=1
 DIST_URL="auto"
 
