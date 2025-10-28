@@ -1,3 +1,4 @@
-TRAIN
+================TRAIN===================
 python tools/train.py --config-file /homes/mlugli/BracketPrediction/configs/brackets/SpUnet.py --num-gpus 1 --options save_path=/homes/mlugli/BracketPrediction/exp/brackets/new_loader
-TEST
+================TEST====================
+python plot_test_results.py --json_file /homes/mlugli/BracketPrediction/exp/brackets/PointTransformer_new_loader/results/predictions.json --stl_dir /work/grana_maxillo/Mlugli/brackets_melted/flattened/

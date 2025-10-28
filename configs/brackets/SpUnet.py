@@ -73,7 +73,7 @@ data = dict(
             dict(type="RandomDropout", dropout_ratio=0.5, dropout_application_ratio=0.5),
             dict(  
                 type="GridSample",
-                grid_size=0.005,
+                grid_size=0.005,  
                 hash_type="fnv",
                 mode="train", 
                 return_grid_coord=True,  # This generates grid_coord  

@@ -116,31 +116,31 @@ data = dict(
     ),  
     # inference
     test=dict(  
-        type=dataset_type,  
-        data_root=data_root,  
+        type=dataset_type,
+        data_root=data_root,
         split="test",
         transform=[
             # Base transforms before test processing  
             dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line
         ],
-        test_mode=True,  
-        test_cfg=dict(  
-            voxelize=dict(  
-                type="GridSample",  
-                grid_size=0.005,  
-                hash_type="fnv",  
-                mode="test",  
+        test_mode=True,
+        test_cfg=dict(
+            voxelize=dict(
+                type="GridSample",
+                grid_size=0.005, 
+                hash_type="fnv", 
+                mode="test",
                 return_grid_coord=True,  
-            ),  
-            crop=None,  
-            post_transform=[  
-                dict(type="ToTensor"),  
-                dict(  
-                    type="Collect",  
-                    keys=("coord", "grid_coord", "index"),  
-                    feat_keys=("coord",),  
-                ),  
-            ],  
+            ),
+            crop=None,
+            post_transform=[
+                dict(type="ToTensor"),
+                dict(
+                    type="Collect",
+                    keys=("coord", "grid_coord", "index"),
+                    feat_keys=("coord",),
+                ),
+            ],
             aug_transform=[  
                 [dict(type="RandomRotateTargetAngle", angle=[0], axis="z", center=[0, 0, 0], p=1)]  
             ],  

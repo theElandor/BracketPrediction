@@ -120,11 +120,14 @@ class BracketPointDataset(DefaultDataset):
             with open(split_file, 'r') as f:
                 file_names = [line.strip() for line in f.readlines()]
         else:
+            # ===========  dataset splits generation: =================
+            # for now we just take all the files, sort them and apply a deterministic
+            # shuffle to get the same splits across runs. Temporary, will be improved.
             file_names = []
-            file_names = [f.replace('.stl', '') for f in os.listdir(self.data_root) if f.endswith('.stl')]
-            # temporary, but for initial consistency it is fine.
-            random.seed(42)
+            file_names = sorted([f.replace('.stl', '') for f in os.listdir(self.data_root) if f.endswith('.stl')])
+            random.seed(32)
             random.shuffle(file_names)
+            # ========================================================
             if self.split == 'train':
                 file_names = file_names[:int(len(file_names) * 0.8)]
             elif self.split == 'val':
@@ -149,24 +152,25 @@ class BracketPointDataset(DefaultDataset):
         #bracket_point = np.expand_dims(bracket_point, axis=0)
         return bracket_point
     
-    def get_data(self, idx):  
+    def get_data(self, idx, testing=False):  
         file_name = self.data_list[idx % len(self.data_list)]  
         stl_path = os.path.join(self.data_root, f"{file_name}.stl")  
         json_path = os.path.join(self.data_root, f"{file_name}.json")  
         
         coord = self._load_stl(stl_path)  
         bracket_point = self._load_json(json_path)  
-        
-        return {  
+        d = {  
             "coord": coord,  
             "name": file_name,  
-            "bracket_point": bracket_point,  
-            #"segment": bracket_point,  # For compatibility  
+            "bracket_point": bracket_point, 
         }
+        if testing:
+            d["segment"] = bracket_point
+        return d
     
     def prepare_test_data(self, idx):  
         # Load data  
-        data_dict = self.get_data(idx)  
+        data_dict = self.get_data(idx, testing=True)  
         data_dict = self.transform(data_dict)  
         
         # Extract ground truth bracket_point and segment  
