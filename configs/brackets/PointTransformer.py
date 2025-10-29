@@ -7,10 +7,10 @@ _base_ = ["../_base_/default_runtime.py"]
 # -----------------------------
 # Misc settings
 # -----------------------------
-batch_size = 4
+batch_size = 16
 num_worker = 4
 mix_prob = 0
-empty_cache = False  
+empty_cache = False
 enable_amp = True  
 
 # -----------------------------
@@ -47,15 +47,21 @@ model = dict(
 
 # -----------------------------
 # Optimizer & Scheduler
-# Trying Lorenzo's scheduler and optimizer configs.
 # -----------------------------
 epoch = 50
-eval_epoch = 50  # Set equal to epoch for single training run
+eval_epoch = 50 # Set equal to epoch for single training run
 clip_grad = 1.0
 
-optimizer = dict(type="SGD", lr=0.001, momentum=0.9, weight_decay=0.0001, nesterov=True)
-scheduler = dict(type="MultiStepLR", milestones=[0.6, 0.8], gamma=0.1)
-  
+optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)  
+scheduler = dict(
+    type="CosineAnnealingLR",  
+    total_steps=epoch,  # Will be set automatically by the trainer  
+    eta_min=0,  
+)
+
+# optimizer = dict(type="SGD", lr=0.001, momentum=0.9, weight_decay=0.0001, nesterov=True)
+# scheduler = dict(type="MultiStepLR", milestones=[0.6, 0.8], gamma=0.1)
+
 # -----------------------------
 # Dataset settings
 # -----------------------------  
@@ -68,28 +74,35 @@ data = dict(
         split="train",  
         data_root=data_root,
         plot=False,
-        transform=[  
-            #dict(type="CenterShift", apply_z=True),
-            dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),
-            dict(type="RandomRotate", angle=[-0.1, 0.1], center = [0,0,0], axis="z", p=0.5),  
-            dict(type="RandomScale", scale=[0.95, 1.05]),
-            dict(type="RandomShift", shift=((-0.02,0.02),)*3),
-            dict(type="RandomDropout", dropout_ratio=0.5, dropout_application_ratio=0.5),
-            dict(  
-                type="GridSample",
-                grid_size=0.005,  
-                hash_type="fnv",
-                mode="train", 
-                return_grid_coord=True,  # This generates grid_coord  
-            ),
-            dict(type="ToTensor"),  
-            dict(  
-                type="Collect",  
-                keys=["coord", "grid_coord", "bracket_point", "name"],  # Include grid_coord  
-                feat_keys=["coord"],  
-            ),  
+        transform=[
+            dict(
+                type='CustomRandomRotate',
+                angle=[-0.1, 0.1],
+                center=[0, 0, 0],
+                axis='z',
+                p=0.5),
+            dict(type='CustomRandomScale', scale=[0.95, 1.05]),
+            dict(
+                type='CustomRandomShift',
+                shift=((-0.02, 0.02), (-0.02, 0.02), (-0.02, 0.02))),
+            dict( # dropout just drops some points from "coord",
+                # no need for custom modifications
+                type='RandomDropout',
+                dropout_ratio=0.5,
+                dropout_application_ratio=0.5),
+            dict(
+                type='GridSample',
+                grid_size=0.005,
+                hash_type='fnv',
+                mode='train',
+                return_grid_coord=True),
+            dict(type='ToTensor'),
+            dict(
+                type='Collect',
+                keys=['coord', 'grid_coord', 'bracket_point', 'name'],
+                feat_keys=['coord'])
         ],  
-        test_mode=False  
+        test_mode=False
     ),  
   
     val=dict(  
@@ -120,7 +133,6 @@ data = dict(
         data_root=data_root,
         split="test",
         transform=[
-            # Base transforms before test processing  
             dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line
         ],
         test_mode=True,

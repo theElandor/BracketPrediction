@@ -149,7 +149,6 @@ class BracketPointDataset(DefaultDataset):
         with open(json_path, 'r') as f:
             data = json.load(f)
         bracket_point = np.array(data['bracket_point'], dtype=np.float32)
-        #bracket_point = np.expand_dims(bracket_point, axis=0)
         return bracket_point
     
     def get_data(self, idx, testing=False):  
@@ -162,14 +161,13 @@ class BracketPointDataset(DefaultDataset):
         d = {  
             "coord": coord,  
             "name": file_name,  
-            "bracket_point": bracket_point, 
+            "bracket_point": bracket_point
         }
         if testing:
             d["segment"] = bracket_point
         return d
     
-    def prepare_test_data(self, idx):  
-        # Load data  
+    def prepare_test_data(self, idx):
         data_dict = self.get_data(idx, testing=True)  
         data_dict = self.transform(data_dict)  
         
@@ -208,55 +206,6 @@ class BracketPointDataset(DefaultDataset):
             fragment_list[i] = self.post_transform(fragment_list[i])  
         result_dict["fragment_list"] = fragment_list  
         return result_dict
-    #def __getitem__(self, idx):
-    #    # Handle looping
-    #    idx = idx % len(self.data_list)
-    #    file_name = self.data_list[idx]
-    #
-    #    # Load STL and JSON
-    #    stl_path = os.path.join(self.data_root, f"{file_name}.stl")
-    #    json_path = os.path.join(self.data_root, f"{file_name}.json")
-    #    
-    #    # Load point cloud from STL
-    #    coord = self._load_stl(stl_path)
-    #    
-    #    # Load target bracket_point
-    #    bracket_point = self._load_json(json_path)
-    #    
-    #    if self.plot:
-    #        self.plot_stl_with_points_interactive(stl_path, bracket_point)
-    #    # Create data dict
-    #    data_dict = {
-    #        "coord": coord,
-    #        "name": file_name,
-    #        "bracket_point": bracket_point,
-    #    }
-    #    
-    #    # Apply transforms
-    #    if self.transform is not None:
-    #        data_dict = self.transform(data_dict)
-    #    if self.test_mode:  
-    #        fragment_list = []  
-    #        data_dict_list = []  
-    #        
-    #        # Apply test voxelization  
-    #        data_dict = self.test_voxelize(data_dict)  
-    #        
-    #        # Apply test crop if configured  
-    #        if self.test_crop:  
-    #            data_dict_list = self.test_crop(data_dict)  
-    #        else:  
-    #            data_dict_list = [data_dict]  
-    #        
-    #        # Apply augmentations and post-transforms  
-    #        for data_dict in data_dict_list:  
-    #            for aug in self.aug_transform:  
-    #                data_dict_aug = aug(deepcopy(data_dict))  
-    #                fragment_list.append(self.post_transform(data_dict_aug))  
-    #        
-    #        return fragment_list
-    #    else:  
-    #        return data_dict
     
     def __len__(self):
         return len(self.data_list) * self.loop

@@ -196,6 +196,20 @@ class RandomShift(object):
             data_dict["coord"] += [shift_x, shift_y, shift_z]
         return data_dict
 
+@TRANSFORMS.register_module()
+class CustomRandomShift(object):
+    def __init__(self, shift=((-0.2, 0.2), (-0.2, 0.2), (0, 0))):
+        self.shift = shift
+
+    def __call__(self, data_dict):
+        if "coord" in data_dict.keys():
+            shift_x = np.random.uniform(self.shift[0][0], self.shift[0][1])
+            shift_y = np.random.uniform(self.shift[1][0], self.shift[1][1])
+            shift_z = np.random.uniform(self.shift[2][0], self.shift[2][1])
+            data_dict["coord"] += [shift_x, shift_y, shift_z]
+            if "bracket_point" in data_dict:
+                data_dict["bracket_point"] += [shift_x, shift_y, shift_z]
+        return data_dict
 
 @TRANSFORMS.register_module()
 class PointClip(object):
@@ -271,6 +285,47 @@ class RandomRotate(object):
             data_dict["normal"] = np.dot(data_dict["normal"], np.transpose(rot_t))
         return data_dict
 
+@TRANSFORMS.register_module()
+class CustomRandomRotate(object):
+    def __init__(self, angle=None, center=None, axis="z", always_apply=False, p=0.5):
+        self.angle = [-1, 1] if angle is None else angle
+        self.axis = axis
+        self.always_apply = always_apply
+        self.p = p if not self.always_apply else 1
+        self.center = center
+        
+    def __call__(self, data_dict):
+        if random.random() > self.p:
+            return data_dict
+        angle = np.random.uniform(self.angle[0], self.angle[1]) * np.pi
+        rot_cos, rot_sin = np.cos(angle), np.sin(angle)
+        if self.axis == "x":
+            rot_t = np.array([[1, 0, 0], [0, rot_cos, -rot_sin], [0, rot_sin, rot_cos]])
+        elif self.axis == "y":
+            rot_t = np.array([[rot_cos, 0, rot_sin], [0, 1, 0], [-rot_sin, 0, rot_cos]])
+        elif self.axis == "z":
+            rot_t = np.array([[rot_cos, -rot_sin, 0], [rot_sin, rot_cos, 0], [0, 0, 1]])
+        else:
+            raise NotImplementedError
+        if "coord" in data_dict.keys():
+            if self.center is None:
+                x_min, y_min, z_min = data_dict["coord"].min(axis=0)
+                x_max, y_max, z_max = data_dict["coord"].max(axis=0)
+                center = [(x_min + x_max) / 2, (y_min + y_max) / 2, (z_min + z_max) / 2]
+            else:
+                center = self.center
+            data_dict["coord"] -= center
+            data_dict["coord"] = np.dot(data_dict["coord"], np.transpose(rot_t))
+            data_dict["coord"] += center
+            if "bracket_point" in data_dict.keys(): # apply rotation also to bracket_point
+                data_dict["bracket_point"] -= center
+                data_dict["bracket_point"] = np.dot(data_dict["bracket_point"], np.transpose(rot_t))
+                data_dict["bracket_point"] += center
+
+        if "normal" in data_dict.keys():
+            data_dict["normal"] = np.dot(data_dict["normal"], np.transpose(rot_t))
+        return data_dict
+
 
 @TRANSFORMS.register_module()
 class RandomRotateTargetAngle(object):
@@ -324,6 +379,23 @@ class RandomScale(object):
             )
             data_dict["coord"] *= scale
         return data_dict
+    
+@TRANSFORMS.register_module()
+class CustomRandomScale(object):
+    def __init__(self, scale=None, anisotropic=False):
+        self.scale = scale if scale is not None else [0.95, 1.05]
+        self.anisotropic = anisotropic
+
+    def __call__(self, data_dict):
+        if "coord" in data_dict.keys():
+            scale = np.random.uniform(
+                self.scale[0], self.scale[1], 3 if self.anisotropic else 1
+            )
+            data_dict["coord"] *= scale
+            if "bracket_point" in data_dict.keys(): # apply transform to GT point
+                data_dict["bracket_point"] *= scale
+        return data_dict
+
 
 
 @TRANSFORMS.register_module()
@@ -340,6 +412,28 @@ class RandomFlip(object):
         if np.random.rand() < self.p:
             if "coord" in data_dict.keys():
                 data_dict["coord"][:, 1] = -data_dict["coord"][:, 1]
+            if "normal" in data_dict.keys():
+                data_dict["normal"][:, 1] = -data_dict["normal"][:, 1]
+        return data_dict
+    
+@TRANSFORMS.register_module()
+class CustomRandomFlip(object):
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, data_dict):
+        if np.random.rand() < self.p:
+            if "coord" in data_dict.keys():
+                data_dict["coord"][:, 0] = -data_dict["coord"][:, 0]
+            if "normal" in data_dict.keys():
+                data_dict["normal"][:, 0] = -data_dict["normal"][:, 0]
+            if "bracket_point" in data_dict.keys():
+                data_dict["bracket_point"] = -data_dict["bracket_point"]
+        if np.random.rand() < self.p:
+            if "coord" in data_dict.keys():
+                data_dict["coord"][:, 1] = -data_dict["coord"][:, 1]
+            if "bracket_point" in data_dict.keys():
+                data_dict["bracket_point"] = -data_dict["bracket_point"]
             if "normal" in data_dict.keys():
                 data_dict["normal"][:, 1] = -data_dict["normal"][:, 1]
         return data_dict
