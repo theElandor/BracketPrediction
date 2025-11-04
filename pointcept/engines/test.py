@@ -1364,7 +1364,7 @@ class BracketTester(TesterBase):
         for idx, data_dict in enumerate(self.test_loader):  
             data_dict = data_dict[0]  
             fragment_list = data_dict.pop("fragment_list")  
-            bracket_point_gt = data_dict.pop("bracket_point")  
+            bracket_point_gt = data_dict.pop("bracket")  
             data_name = data_dict.pop("name")  
             
             # Move ground truth to GPU  

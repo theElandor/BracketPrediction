@@ -23,11 +23,20 @@ class VoxelBracketPredictor(nn.Module):
     """  
     - Voxel-based backbone (PTv3, SPUnet)
     - Simple regression head
+    - Modes:
+        1) Normal mode:
+            Directly regress the bracket point
+        2) Offset mode:
+            Predicts the offset from the "facial" landmark
+            extracted from 3D teethland. Requires a "facial" point.
+            field with 3 coordinates in the json files of the
+            dataset.
     """  
       
     def __init__(  
         self,
-        backbone,  
+        backbone,
+        mode="normal", 
         backbone_out_channels=96,  
         output_dim=3,  # 3D point coordinates
         save_predictions=False,
@@ -36,6 +45,9 @@ class VoxelBracketPredictor(nn.Module):
         super().__init__()
           
         self.backbone = build_model(backbone)  
+        self.mode = mode
+        if self.mode not in "offset normal".split():
+            raise ValueError("Unknown model mode. Please use either normal or offset.")
         self.output_dir = output_dir
         self.save_predictions = save_predictions
 
@@ -101,23 +113,30 @@ class VoxelBracketPredictor(nn.Module):
         else:
             feat = point    
      
-        # Predict 3D point    
-        bracket_point_pred = self.head(feat)    
+        # Predict 3D point
+        prediction = self.head(feat)
         # during training we just need to store the loss value in the output dict,
         # while during testing we also need to store the prediction itself so that the
-        # tester can access the field.
+        # tester can access the field
+
+        if self.mode == "normal":
+            bracket_point_pred = prediction
+        else:
+            bracket_point_pred = input_dict["facial"].view_as(prediction) + prediction
         if not self.training:
             out = {"bracket_point_pred":bracket_point_pred} # Add predictions to output
         else:
             out = {}
-
-        # Compute MSE loss if ground truth available    
-        if "bracket_point" in input_dict:
+        # Compute MSE loss if ground truth available
+        if "bracket" in input_dict:
             # here the "target" tensor is of shape [B*3], while the
             # "bracket_point_pred" tensor is of shape [B,3]". This
             # causes an error in nn.functional.mse_loss.
-            # So we need to reshape the target tensor. (I believe is what we need to do)
-            target = input_dict["bracket_point"].view_as(bracket_point_pred)
+            # So we need to reshape the target tensor (I guess).
+            target = input_dict["bracket"].view_as(bracket_point_pred)
+            # if in normal mode, bracket_point_pred is the final prediction
+            # if in offset mode, bracket_point_pred is the offset to add
+            # to toothInstanceNet "facial_point" landmark. 
             if self.save_predictions and not self.training: # plot only in inference.
                 self._save(input_dict, bracket_point_pred)
             loss = nn.functional.mse_loss(bracket_point_pred, target)

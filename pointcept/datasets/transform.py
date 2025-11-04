@@ -207,8 +207,11 @@ class CustomRandomShift(object):
             shift_y = np.random.uniform(self.shift[1][0], self.shift[1][1])
             shift_z = np.random.uniform(self.shift[2][0], self.shift[2][1])
             data_dict["coord"] += [shift_x, shift_y, shift_z]
-            if "bracket_point" in data_dict:
-                data_dict["bracket_point"] += [shift_x, shift_y, shift_z]
+            for custom_point in ["bracket", "facial"]:
+                if custom_point in data_dict:
+                    data_dict[custom_point] += [shift_x, shift_y, shift_z]
+            if "facial" in data_dict:
+                data_dict["facial"] += [shift_x, shift_y, shift_z]           
         return data_dict
 
 @TRANSFORMS.register_module()
@@ -317,10 +320,11 @@ class CustomRandomRotate(object):
             data_dict["coord"] -= center
             data_dict["coord"] = np.dot(data_dict["coord"], np.transpose(rot_t))
             data_dict["coord"] += center
-            if "bracket_point" in data_dict.keys(): # apply rotation also to bracket_point
-                data_dict["bracket_point"] -= center
-                data_dict["bracket_point"] = np.dot(data_dict["bracket_point"], np.transpose(rot_t))
-                data_dict["bracket_point"] += center
+            for custom_point in ["bracket", "facial"]:
+                if custom_point in data_dict.keys():
+                    data_dict[custom_point] -= center
+                    data_dict[custom_point] = np.dot(data_dict[custom_point], np.transpose(rot_t))
+                    data_dict[custom_point] += center
 
         if "normal" in data_dict.keys():
             data_dict["normal"] = np.dot(data_dict["normal"], np.transpose(rot_t))
@@ -392,9 +396,10 @@ class CustomRandomScale(object):
                 self.scale[0], self.scale[1], 3 if self.anisotropic else 1
             )
             data_dict["coord"] *= scale
-            if "bracket_point" in data_dict.keys(): # apply transform to GT point
-                data_dict["bracket_point"] *= scale
-        return data_dict
+            for custom_point in ["bracket", "facial"]:
+                if custom_point in data_dict.keys():
+                    data_dict[custom_point] *= scale
+            return data_dict
 
 
 
@@ -427,13 +432,14 @@ class CustomRandomFlip(object):
                 data_dict["coord"][:, 0] = -data_dict["coord"][:, 0]
             if "normal" in data_dict.keys():
                 data_dict["normal"][:, 0] = -data_dict["normal"][:, 0]
-            if "bracket_point" in data_dict.keys():
-                data_dict["bracket_point"] = -data_dict["bracket_point"]
+            if "bracket" in data_dict.keys():
+                data_dict["bracket"] = -data_dict["bracket"]
         if np.random.rand() < self.p:
             if "coord" in data_dict.keys():
                 data_dict["coord"][:, 1] = -data_dict["coord"][:, 1]
-            if "bracket_point" in data_dict.keys():
-                data_dict["bracket_point"] = -data_dict["bracket_point"]
+            for custom_point in ["bracket", "facial"]:
+                if custom_point in data_dict.keys():
+                    data_dict[custom_point] = -data_dict[custom_point]
             if "normal" in data_dict.keys():
                 data_dict["normal"][:, 1] = -data_dict["normal"][:, 1]
         return data_dict

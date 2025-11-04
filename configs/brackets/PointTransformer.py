@@ -40,6 +40,7 @@ model = dict(
     ),
     backbone_out_channels=128,
     save_predictions = False,
+    mode="offset",
     # output_dir will be unused if save_predictions is not set.
     output_dir = "/work/grana_maxillo/Mlugli/brackets_melted/model_predictions/json",
     output_dim=3,
@@ -52,11 +53,14 @@ epoch = 50
 eval_epoch = 50 # Set equal to epoch for single training run
 clip_grad = 1.0
 
-optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)  
-scheduler = dict(
-    type="CosineAnnealingLR",  
-    total_steps=epoch,  # Will be set automatically by the trainer  
-    eta_min=0,  
+optimizer = dict(type="AdamW", lr=0.0003, weight_decay=0.005)  
+scheduler = dict(  
+    type="OneCycleLR",
+    max_lr=optimizer["lr"],
+    pct_start=0.15,
+    anneal_strategy="cos",
+    div_factor=10.0,
+    final_div_factor=100.0,
 )
 
 # optimizer = dict(type="SGD", lr=0.001, momentum=0.9, weight_decay=0.0001, nesterov=True)

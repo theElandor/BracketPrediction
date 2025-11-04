@@ -8,8 +8,8 @@ _base_ = ["../_base_/default_runtime.py"]
 # -----------------------------
 # Misc settings
 # -----------------------------
-batch_size = 16
-num_worker = 4
+batch_size = 32
+num_worker = 8
 mix_prob = 0
 empty_cache = False
 enable_amp = True
@@ -70,12 +70,13 @@ scheduler = dict(
 # Dataset settings
 # -----------------------------  
 dataset_type = "BracketPointDataset"  
-data_root = "/work/grana_maxillo/Mlugli/brackets_melted/flattened"  
+data_root = "/work/grana_maxillo/Mlugli/Brackets"  
 
 data = dict(  
-    train=dict(  
+    train=dict(
         type=dataset_type,  
-        split="train",  
+        split="train",
+        fold = 1,
         data_root=data_root,
         plot=False,
         transform=[
@@ -102,7 +103,7 @@ data = dict(
             dict(type='ToTensor'),
             dict(
                 type='Collect',
-                keys=['coord', 'grid_coord', 'bracket_point', 'name'],
+                keys=['coord', 'grid_coord', 'bracket', 'name'],
                 feat_keys=['coord'])
         ],  
         test_mode=False
@@ -111,6 +112,7 @@ data = dict(
     val=dict(  
         type=dataset_type,
         split="val",
+        fold = 1,
         data_root=data_root,
         transform=[
             dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line  
@@ -124,7 +126,7 @@ data = dict(
             dict(type="ToTensor"),
             dict(
                 type="Collect",  
-                keys=["coord", "grid_coord", "bracket_point", "name"],
+                keys=["coord", "grid_coord", "bracket", "name"],
                 feat_keys=["coord"],  
             ),
         ],
@@ -135,6 +137,7 @@ data = dict(
         type=dataset_type,
         data_root=data_root,
         split="test",
+        fold = 1,
         transform=[
             dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line
         ],

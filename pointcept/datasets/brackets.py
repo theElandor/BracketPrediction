@@ -1,4 +1,3 @@
-
 """
 Brackets dataset
 
@@ -32,12 +31,14 @@ class BracketPointDataset(DefaultDataset):
         data_root,
         point_count:int = 8192,
         split="train",
+        fold = 1,
         transform=None,
         test_mode=False,
         test_cfg=None,
         plot=False,
         loop=1,
     ):
+        self.fold = fold
         super().__init__(
             split=split,
             data_root=data_root,
@@ -48,15 +49,13 @@ class BracketPointDataset(DefaultDataset):
         )
         self.point_count = point_count
         self.plot = plot
-        #self.data_list = self._load_data_list()
         if test_mode:
             self.post_transform = Compose(test_cfg.post_transform)  
             self.aug_transform = [Compose(aug) for aug in test_cfg.aug_transform]
 
     def plot_stl_with_points_interactive(self, stl_path, bracket):
         # Load STL mesh
-        # STL path is like /work/grana_maxillo/Mlugli/brackets_melted/stl/FDI_22/STEM_upper_33_FDI_22.stl
-        debug_plots_path = "/work/grana_maxillo/Mlugli/brackets_melted/debug_plots"
+        debug_plots_path = "/work/grana_maxillo/Mlugli/debug_plots"
         your_mesh = mesh.Mesh.from_file(stl_path)
         vertices = your_mesh.vectors.reshape(-1, 3)
         
@@ -113,56 +112,81 @@ class BracketPointDataset(DefaultDataset):
         fig.write_image(out_filename)
  
     def get_data_list(self):
-        """Load list of data samples."""
-        split_file = os.path.join(self.data_root, f"{self.split}.txt")
-        if os.path.exists(split_file):
-            # If split file exists, use it
-            with open(split_file, 'r') as f:
-                file_names = [line.strip() for line in f.readlines()]
-        else:
-            # ===========  dataset splits generation: =================
-            # for now we just take all the files, sort them and apply a deterministic
-            # shuffle to get the same splits across runs. Temporary, will be improved.
-            file_names = []
-            file_names = sorted([f.replace('.stl', '') for f in os.listdir(self.data_root) if f.endswith('.stl')])
-            random.seed(32)
-            random.shuffle(file_names)
-            # ========================================================
-            if self.split == 'train':
-                file_names = file_names[:int(len(file_names) * 0.8)]
-            elif self.split == 'val':
-                file_names = file_names[int(len(file_names) * 0.8):int(len(file_names) * 0.9)]
-            elif self.split == 'test':
-                file_names = file_names[int(len(file_names) * 0.9):]
+        """Load list of data samples from fold JSON files."""
+        # Load the appropriate fold file
+        fold_file = os.path.join(self.data_root, f"split_{self.fold}.json")
+        
+        if not os.path.exists(fold_file):
+            raise FileNotFoundError(
+                f"Split file not found: {fold_file}\n"
+                f"Please run the split generation script first to create split_{self.fold}.json"
+            )
+        
+        with open(fold_file, 'r') as f:
+            split_data = json.load(f)
+        
+        # Map split names
+        split_mapping = {
+            'train': 'train',
+            'val': 'validation',
+            'test': 'test'
+        }
+        
+        split_key = split_mapping.get(self.split)
+        if split_key not in split_data:
+            raise ValueError(f"Invalid split: {self.split}. Must be one of {list(split_mapping.keys())}")
+        
+        # Get file paths from the split
+        file_paths = split_data[split_key]['files']
+        
+        # Filter only .stl files and extract file names without extension
+        # Also remove the path prefix to get just the filename
+        file_names = []
+        for file_path in file_paths:
+            if file_path.endswith('.stl'):
+                # Extract just the filename without extension
+                # e.g., "Brackets/brackets_1_melted/flattened/STEM_lower_1_FDI_31.stl" 
+                # -> "STEM_lower_1_FDI_31"
+                file_names.append(file_path)
+                #file_name = os.path.basename(file_path).replace('.stl', '')
+                #file_names.append(file_name)
+        
+        print(f"Loaded {len(file_names)} samples from fold {self.fold}, split {self.split}")
+        print(f"  Patients: {len(split_data[split_key]['patient_ids'])}")
+        print(f"  Total files (stl+json): {split_data[split_key]['num_files']}")
         
         return file_names
     
     def _load_stl(self, stl_path):
         mesh = trimesh.load(stl_path, force='mesh')
         points, normals = trimesh.sample.sample_surface(mesh, count=self.point_count)
-
-        # did this cuz I did not know how pointcept batching logic worked.
-        #points = np.expand_dims(points.astype(np.float32), axis=0)
         return points.astype(np.float32)
     
     def _load_json(self, json_path):
         with open(json_path, 'r') as f:
             data = json.load(f)
-        bracket_point = np.array(data['bracket_point'], dtype=np.float32)
-        return bracket_point
+        bracket_point = np.array(data['bracket'], dtype=np.float32)
+        try:
+            facial_point = np.array(data['facial'], dtype=np.float32)
+        except:
+            facial_point = None
+        return bracket_point, facial_point
     
     def get_data(self, idx, testing=False):  
-        file_name = self.data_list[idx % len(self.data_list)]  
-        stl_path = os.path.join(self.data_root, f"{file_name}.stl")  
-        json_path = os.path.join(self.data_root, f"{file_name}.json")  
+        file_rel_path = self.data_list[idx % len(self.data_list)]  
+        stl_path = os.path.join(self.data_root, file_rel_path)  
+        json_path = os.path.join(self.data_root, file_rel_path.replace(".stl", ".json"))  
         
-        coord = self._load_stl(stl_path)  
-        bracket_point = self._load_json(json_path)  
+        coord = self._load_stl(stl_path)
+        bracket_point, facial_point = self._load_json(json_path)
         d = {  
             "coord": coord,  
-            "name": file_name,  
-            "bracket_point": bracket_point
+            "name": Path(stl_path).stem,
+            "bracket": bracket_point
         }
+        # some corrections
+        if facial_point is not None:
+            d["facial"] = facial_point
         if testing:
             d["segment"] = bracket_point
         return d
@@ -174,7 +198,8 @@ class BracketPointDataset(DefaultDataset):
         # Extract ground truth bracket_point and segment  
         result_dict = dict(  
             segment=data_dict.pop("segment"),  
-            bracket_point=data_dict.pop("bracket_point"),  # Add this line  
+            bracket_point=data_dict.pop("bracket"),  # Add this line 
+            facial_point = data_dict.pop("facial"), 
             name=data_dict.pop("name")  
         )  
         
@@ -183,7 +208,7 @@ class BracketPointDataset(DefaultDataset):
             result_dict["origin_segment"] = data_dict.pop("origin_segment")  
             result_dict["inverse"] = data_dict.pop("inverse")  
     
-        # Create fragments with augmentations  
+        # Create fragments with augmentations
         data_dict_list = []  
         for aug in self.aug_transform:  
             data_dict_list.append(aug(deepcopy(data_dict)))  

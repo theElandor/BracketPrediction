@@ -10,7 +10,7 @@ _base_ = ["../_base_/default_runtime.py"]
 batch_size = 16
 num_worker = 4
 mix_prob = 0
-empty_cache = False  
+empty_cache = False
 enable_amp = True  
 
 # -----------------------------
@@ -40,7 +40,8 @@ model = dict(
     save_predictions = False,
     output_dir = "/work/grana_maxillo/Mlugli/brackets_melted/model_predictions/json",
     output_dim=3,
-)  
+    mode = "offset"
+)
 
 # -----------------------------
 # Optimizer & Scheduler
@@ -69,23 +70,23 @@ data_root = "/work/grana_maxillo/Mlugli/brackets_melted/flattened"
 
 data = dict(  
     train=dict(  
-        type=dataset_type,  
+        type=dataset_type,
         split="train",  
         data_root=data_root,
         plot=False,
         transform=[
-            dict(type='Update', keys_dict=dict(index_valid_keys=['coord'])),
             dict(
-                type='RandomRotate',
+                type='CustomRandomRotate',
                 angle=[-0.1, 0.1],
                 center=[0, 0, 0],
                 axis='z',
                 p=0.5),
-            dict(type='RandomScale', scale=[0.95, 1.05]),
+            dict(type='CustomRandomScale', scale=[0.95, 1.05]),
             dict(
-                type='RandomShift',
+                type='CustomRandomShift',
                 shift=((-0.02, 0.02), (-0.02, 0.02), (-0.02, 0.02))),
-            dict(
+            dict( # dropout just drops some points from "coord",
+                # no need for custom modifications
                 type='RandomDropout',
                 dropout_ratio=0.5,
                 dropout_application_ratio=0.5),
@@ -98,7 +99,7 @@ data = dict(
             dict(type='ToTensor'),
             dict(
                 type='Collect',
-                keys=['coord', 'grid_coord', 'bracket_point', 'name'],
+                keys=['coord', 'grid_coord', 'bracket_point', 'facial_point', 'name'],
                 feat_keys=['coord'])
         ],  
         test_mode=False
@@ -120,7 +121,7 @@ data = dict(
             dict(type="ToTensor"),  
             dict(
                 type="Collect",  
-                keys=["coord", "grid_coord", "bracket_point", "name"],
+                keys=["coord", "grid_coord", "bracket_point", "facial_point", "name"],
                 feat_keys=["coord"],  
             ),  
         ],  
@@ -148,7 +149,7 @@ data = dict(
                 dict(type="ToTensor"),  
                 dict(  
                     type="Collect",  
-                    keys=("coord", "grid_coord", "index"),  
+                    keys=("coord", "grid_coord", "facial_point", "index"),  
                     feat_keys=("coord",),  
                 ),  
             ],  
