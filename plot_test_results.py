@@ -6,23 +6,29 @@ import plotly.graph_objects as go
 import numpy as np
 from stl import mesh
 
-def create_plots(json_file_path: str, stl_dir_path: str):
+def create_plots(json_file_path: str, stl_dir_paths: list):
     """
     Generates interactive 3D plots for STL files and corresponding points
-    defined in a JSON file.
+    defined in a JSON file. Searches for STL files across multiple directories.
     """
     
     # --- 1. Validate paths and setup directories ---
     json_path = Path(json_file_path)
-    stl_dir = Path(stl_dir_path)
+    stl_dirs = [Path(dir_path) for dir_path in stl_dir_paths]
 
     if not json_path.is_file():
         print(f"Error: JSON file not found at {json_path}")
         sys.exit(1)
-        
-    if not stl_dir.is_dir():
-        print(f"Error: STL directory not found at {stl_dir}")
-        sys.exit(1)
+    
+    # Validate all STL directories
+    for stl_dir in stl_dirs:
+        if not stl_dir.is_dir():
+            print(f"Error: STL directory not found at {stl_dir}")
+            sys.exit(1)
+    
+    print(f"Searching for STL files in {len(stl_dirs)} directories:")
+    for stl_dir in stl_dirs:
+        print(f"  - {stl_dir.resolve()}")
 
     # Create the output directory "plots" in the same folder as the JSON file
     output_dir = json_path.parent / "plots"
@@ -44,17 +50,24 @@ def create_plots(json_file_path: str, stl_dir_path: str):
     skipped_count = 0
     for filename_key, coordinates in data.items():
         
-        # Construct the expected STL file path
+        # Construct the expected STL file name
         stl_file_name = f"{filename_key}.stl"
-        stl_path = stl_dir / stl_file_name
-
-        # Check if the STL file exists
-        if not stl_path.exists():
-            print(f"Warning: STL file not found: {stl_path}. Skipping '{filename_key}'.")
+        
+        # Search for the STL file in all provided directories
+        stl_path = None
+        for stl_dir in stl_dirs:
+            candidate_path = stl_dir / stl_file_name
+            if candidate_path.exists():
+                stl_path = candidate_path
+                break
+        
+        # Check if the STL file was found
+        if stl_path is None:
+            print(f"Warning: STL file '{stl_file_name}' not found in any directory. Skipping '{filename_key}'.")
             skipped_count += 1
             continue
 
-        print(f"Processing: {filename_key} ...")
+        print(f"Processing: {filename_key} (found in {stl_path.parent.name}) ...")
 
         try:
             # --- 4. Load STL mesh ---
@@ -144,13 +157,14 @@ if __name__ == "__main__":
         help="Path to the input JSON file containing coordinates."
     )
     parser.add_argument(
-        "--stl_dir",
+        "--stl_dirs",
         type=str,
+        nargs='+',
         required=True,
-        help="Path to the directory containing the corresponding STL files."
+        help="Path(s) to the directory/directories containing the STL files. You can specify multiple directories separated by spaces."
     )
 
     args = parser.parse_args()
     
     # Run the main function
-    create_plots(args.json_file, args.stl_dir)
+    create_plots(args.json_file, args.stl_dirs)

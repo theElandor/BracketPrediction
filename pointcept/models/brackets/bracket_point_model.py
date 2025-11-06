@@ -7,6 +7,8 @@ import torch.nn as nn
 from pointcept.models.builder import MODELS
 from pointcept.models.losses import build_criteria
 from torch_scatter import segment_csr  
+import torch.nn.functional as F
+import wandb
 
 from ..builder import build_model  
 from pointcept.models.utils.structure import Point  
@@ -36,7 +38,8 @@ class VoxelBracketPredictor(nn.Module):
     def __init__(  
         self,
         backbone,
-        mode="normal", 
+        mode="normal",
+        alpha = 0.0,
         backbone_out_channels=96,  
         output_dim=3,  # 3D point coordinates
         save_predictions=False,
@@ -44,7 +47,8 @@ class VoxelBracketPredictor(nn.Module):
     ):  
         super().__init__()
           
-        self.backbone = build_model(backbone)  
+        self.backbone = build_model(backbone)
+        self.alpha = alpha 
         self.mode = mode
         if self.mode not in "offset normal".split():
             raise ValueError("Unknown model mode. Please use either normal or offset.")
@@ -115,10 +119,7 @@ class VoxelBracketPredictor(nn.Module):
      
         # Predict 3D point
         prediction = self.head(feat)
-        # during training we just need to store the loss value in the output dict,
-        # while during testing we also need to store the prediction itself so that the
-        # tester can access the field
-
+        
         if self.mode == "normal":
             bracket_point_pred = prediction
         else:
@@ -139,7 +140,12 @@ class VoxelBracketPredictor(nn.Module):
             # to toothInstanceNet "facial_point" landmark. 
             if self.save_predictions and not self.training: # plot only in inference.
                 self._save(input_dict, bracket_point_pred)
-            loss = nn.functional.mse_loss(bracket_point_pred, target)
-            out["loss"] = loss
 
+            mse = nn.functional.mse_loss(bracket_point_pred, target)
+            cos_sim = nn.functional.cosine_similarity(bracket_point_pred, target).mean()
+            out["cos_sim"] = cos_sim.detach() if self.alpha == 0 else cos_sim
+            if self.alpha != 0:
+                out["loss"] = (1 - self.alpha) * mse + self.alpha * (-cos_sim)
+            else:
+                out["loss"] = mse
         return out

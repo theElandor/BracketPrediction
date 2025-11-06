@@ -31,6 +31,7 @@ class BracketPointDataset(DefaultDataset):
         data_root,
         point_count:int = 8192,
         split="train",
+        debug=False,
         fold = 1,
         transform=None,
         test_mode=False,
@@ -49,6 +50,7 @@ class BracketPointDataset(DefaultDataset):
         )
         self.point_count = point_count
         self.plot = plot
+        self.debug = debug
         if test_mode:
             self.post_transform = Compose(test_cfg.post_transform)  
             self.aug_transform = [Compose(aug) for aug in test_cfg.aug_transform]
@@ -144,13 +146,7 @@ class BracketPointDataset(DefaultDataset):
         file_names = []
         for file_path in file_paths:
             if file_path.endswith('.stl'):
-                # Extract just the filename without extension
-                # e.g., "Brackets/brackets_1_melted/flattened/STEM_lower_1_FDI_31.stl" 
-                # -> "STEM_lower_1_FDI_31"
                 file_names.append(file_path)
-                #file_name = os.path.basename(file_path).replace('.stl', '')
-                #file_names.append(file_name)
-        
         print(f"Loaded {len(file_names)} samples from fold {self.fold}, split {self.split}")
         print(f"  Patients: {len(split_data[split_key]['patient_ids'])}")
         print(f"  Total files (stl+json): {split_data[split_key]['num_files']}")
@@ -179,7 +175,7 @@ class BracketPointDataset(DefaultDataset):
         
         coord = self._load_stl(stl_path)
         bracket_point, facial_point = self._load_json(json_path)
-        d = {  
+        d = {
             "coord": coord,  
             "name": Path(stl_path).stem,
             "bracket": bracket_point
@@ -193,28 +189,30 @@ class BracketPointDataset(DefaultDataset):
     
     def prepare_test_data(self, idx):
         data_dict = self.get_data(idx, testing=True)  
-        data_dict = self.transform(data_dict)  
+        data_dict = self.transform(data_dict)
         
         # Extract ground truth bracket_point and segment  
-        result_dict = dict(  
+        result_dict = dict(
             segment=data_dict.pop("segment"),  
-            bracket_point=data_dict.pop("bracket"),  # Add this line 
-            facial_point = data_dict.pop("facial"), 
-            name=data_dict.pop("name")  
+            bracket =data_dict.pop("bracket"),  # Add this line 
+            name=data_dict.pop("name")
         )  
         
-        if "origin_segment" in data_dict:  
-            assert "inverse" in data_dict  
-            result_dict["origin_segment"] = data_dict.pop("origin_segment")  
-            result_dict["inverse"] = data_dict.pop("inverse")  
+        if "facial" in data_dict:
+            result_dict["facial"] = data_dict.pop("facial")
+
+        if "origin_segment" in data_dict:
+            assert "inverse" in data_dict
+            result_dict["origin_segment"] = data_dict.pop("origin_segment")
+            result_dict["inverse"] = data_dict.pop("inverse")
     
         # Create fragments with augmentations
-        data_dict_list = []  
-        for aug in self.aug_transform:  
-            data_dict_list.append(aug(deepcopy(data_dict)))  
+        data_dict_list = []
+        for aug in self.aug_transform:
+            data_dict_list.append(aug(deepcopy(data_dict)))
     
-        fragment_list = []  
-        for data in data_dict_list:  
+        fragment_list = []
+        for data in data_dict_list:
             if self.test_voxelize is not None:  
                 data_part_list = self.test_voxelize(data)  
             else:  
@@ -233,4 +231,5 @@ class BracketPointDataset(DefaultDataset):
         return result_dict
     
     def __len__(self):
+        if self.debug: return 2 # if debugging, run on just 2 samples
         return len(self.data_list) * self.loop

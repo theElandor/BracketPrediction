@@ -15,6 +15,7 @@ import wandb
 import torch
 import torch.utils.data
 from collections import OrderedDict
+import torch.nn.functional as F
 
 if sys.version_info >= (3, 10):
     from collections.abc import Sequence
@@ -564,11 +565,12 @@ class DisplacementEvaluator(HookBase):
         if self.trainer.cfg.evaluate:  
             self.eval()  
       
-    def eval(self):  
+    def eval(self):
         self.trainer.logger.info(">>>>>>>>>>>>>>>> Start Evaluation >>>>>>>>>>>>>>>>")  
         self.trainer.model.eval()  
-          
-        mse_sum = 0.0  
+        
+        mse_sum = 0.0
+        cos_sim_sum = 0.0
         count = 0  
           
         for i, input_dict in enumerate(self.trainer.val_loader):  
@@ -577,35 +579,41 @@ class DisplacementEvaluator(HookBase):
                     input_dict[key] = input_dict[key].cuda(non_blocking=True)  
               
             with torch.no_grad():  
-                output_dict = self.trainer.model(input_dict)  
-              
-            loss = output_dict["loss"]  
-            mse_sum += loss.item()  
-            count += 1  
-              
+                output_dict = self.trainer.model(input_dict)
+
+            loss = output_dict["loss"]
+            cos_sim = output_dict["cos_sim"]
+            mse_sum += loss.item()
+            cos_sim_sum += cos_sim.item()
+            count += 1
+
             self.trainer.storage.put_scalar("val_loss", loss.item())  
+            self.trainer.storage.put_scalar("cos_sim", cos_sim.item())
           
-        mse_avg = mse_sum / count  
-        self.trainer.logger.info(f"Val result: MSE {mse_avg:.6f}")  
-          
+        mse_avg = mse_sum / count
+        cos_sim_avg = cos_sim_sum / count
+        self.trainer.logger.info(f"Val result: MSE {mse_avg:.6f}")
+        self.trainer.logger.info(f"Metric: Cosine Similarity {cos_sim_avg:.6f}")
+
         current_epoch = self.trainer.epoch + 1  
         if self.trainer.writer is not None:  
             self.trainer.writer.add_scalar("val/mse", mse_avg, current_epoch)  
-              
+            self.trainer.writer.add_scalar("val/cos_sim", cos_sim_avg, current_epoch)
             # Add WandB logging  
-            if self.trainer.cfg.enable_wandb:  
-                wandb.log(  
+            if self.trainer.cfg.enable_wandb:
+                wandb.log(
                     {  
                         "Epoch": current_epoch,  
-                        "val/mse": mse_avg,  
+                        "val/mse": mse_avg,
+                        "val/cos_sim": cos_sim_avg,
                     },  
-                    step=wandb.run.step,  
+                    step=wandb.run.step, 
                 )  
           
         # Store NEGATIVE MSE so that "higher is better" logic works  
         self.trainer.comm_info["current_metric_value"] = -mse_avg  
-        self.trainer.comm_info["current_metric_name"] = "MSE"  
-          
+        self.trainer.comm_info["current_metric_name"] = "MSE"
+
         self.trainer.logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")  
       
     def after_train(self):  

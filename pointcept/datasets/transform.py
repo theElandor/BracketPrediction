@@ -427,19 +427,22 @@ class CustomRandomFlip(object):
         self.p = p
 
     def __call__(self, data_dict):
-        if np.random.rand() < self.p:
+        if np.random.rand() < self.p: # random flip on X axis both GT and mesh points
             if "coord" in data_dict.keys():
                 data_dict["coord"][:, 0] = -data_dict["coord"][:, 0]
             if "normal" in data_dict.keys():
                 data_dict["normal"][:, 0] = -data_dict["normal"][:, 0]
-            if "bracket" in data_dict.keys():
-                data_dict["bracket"] = -data_dict["bracket"]
-        if np.random.rand() < self.p:
+            if "bracket" in data_dict.keys():  
+                data_dict["bracket"][0] = -data_dict["bracket"][0]  # Only flip x  
+            if "facial" in data_dict.keys():  
+                data_dict["facial"][0] = -data_dict["facial"][0]  # Only flip x 
+        if np.random.rand() < self.p: # random flip on Y axis
             if "coord" in data_dict.keys():
                 data_dict["coord"][:, 1] = -data_dict["coord"][:, 1]
-            for custom_point in ["bracket", "facial"]:
-                if custom_point in data_dict.keys():
-                    data_dict[custom_point] = -data_dict[custom_point]
+            if "bracket" in data_dict.keys():  
+                data_dict["bracket"][1] = -data_dict["bracket"][1]  # Only flip y  
+            if "facial" in data_dict.keys():  
+                data_dict["facial"][1] = -data_dict["facial"][1]  # Only flip y
             if "normal" in data_dict.keys():
                 data_dict["normal"][:, 1] = -data_dict["normal"][:, 1]
         return data_dict
