@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=PT_bracket_prediction
+#SBATCH --job-name=Pt_bracket_prediction
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
 #SBATCH --account=grana_maxillo
-#SBATCH --nodelist=ailb-login-03
 #SBATCH --partition=all_serial
+#SBATCH --nodelist=ailb-login-03
 #SBATCH --time=4:00:00
 #SBATCH --mem=20GB
 #SBATCH --output=logs/train_%j.out
@@ -23,7 +23,7 @@ export PYTHONPATH=./
 
 # Configuration
 CONFIG="configs/brackets/Pt.py"
-EXP_NAME="PT_fold6_lowAug"
+EXP_NAME="Pt_with_class"
 NUM_GPU=1
 
 # Training command

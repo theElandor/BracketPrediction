@@ -19,7 +19,6 @@ import json
 import os
 from collections import defaultdict
 
-
 @MODELS.register_module()  
 class VoxelBracketPredictor(nn.Module):  
     """  
@@ -54,19 +53,24 @@ class VoxelBracketPredictor(nn.Module):
             raise ValueError("Unknown model mode. Please use either normal or offset.")
         self.output_dir = output_dir
         self.save_predictions = save_predictions
+        self.num_classes = 8 # FDI index % 10
+        self.tooth_embedding_dim = 128
+
+        # embedding layer for the one hot tooth class
+        self.embedder = nn.Embedding(self.num_classes, self.tooth_embedding_dim)
 
         # Regression head: outputs 3D point coordinates  
         self.head = nn.Sequential(  
-            nn.Linear(backbone_out_channels, 256),  
-            nn.BatchNorm1d(256),  
-            nn.ReLU(inplace=True),  
-            nn.Dropout(p=0.3),  
-            nn.Linear(256, 128),  
-            nn.BatchNorm1d(128),  
-            nn.ReLU(inplace=True),  
-            nn.Dropout(p=0.3),  
+            nn.Linear(backbone_out_channels + self.tooth_embedding_dim, 256),  
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.3),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.3),
             nn.Linear(128, output_dim),
-        )  
+        )
         
     def _save(self, input_dict: dict, bracket_point_pred: torch.Tensor) -> None:
         """
@@ -115,10 +119,12 @@ class VoxelBracketPredictor(nn.Module):
             )    
             feat = point.feat    
         else:
-            feat = point    
-     
+            feat = point
+        class_indices = torch.tensor([int(x.split("_")[-1]) % 10 for x in input_dict["name"]], device=feat.device).long()  
+        class_embeddings = self.embedder(class_indices)
+        combined = torch.cat([feat, class_embeddings], dim=1)
         # Predict 3D point
-        prediction = self.head(feat)
+        prediction= self.head(combined)
         
         if self.mode == "normal":
             bracket_point_pred = prediction

@@ -1,5 +1,4 @@
 
-
 """  
 Configuration file for Bracket Point Prediction with Voxel-based Backbone
 """  
@@ -28,7 +27,7 @@ wandb_project = "bracket_point_prediction"
 # -----------------------------
 
 model = dict(
-    type="VoxelBracketPredictor",  
+    type="VoxelBracketPredictor",
     backbone=dict(  
         type="SpUNet-v1m1",
         in_channels=3,  # xyz coordinates only  
@@ -39,27 +38,31 @@ model = dict(
     ),  
     backbone_out_channels=256,
     save_predictions = False,
+    # output_dir will be unused if save_predictions is not set.
     output_dir = "/work/grana_maxillo/Mlugli/brackets_melted/model_predictions/json",
     output_dim=3,
-    mode = "normal"
-)
+    #alpha=0.2 # Trying adding cosine similarity as an extra metric to improve precision
+)  
 
 # -----------------------------
 # Optimizer & Scheduler
 # -----------------------------
 epoch = 20
-eval_epoch = 20
+eval_epoch = 20 # Set equal to epoch for single training run
 clip_grad = 1.0
 
-optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)  
+optimizer = dict(type="AdamW", lr=0.0005, weight_decay=0.005)  
 scheduler = dict(  
-   type="OneCycleLR",
-   max_lr=optimizer["lr"],
-   pct_start=0.8,
-   anneal_strategy="cos",
-   div_factor=10.0,
-   final_div_factor=100.0,
+    type="OneCycleLR",  
+    max_lr=optimizer["lr"],  # References the optimizer's lr  
+    pct_start=0.10,
+    anneal_strategy="cos", 
+    div_factor=10.0,
+    final_div_factor=100.0,
 )
+
+# optimizer = dict(type="SGD", lr=0.001, momentum=0.9, weight_decay=0.0001, nesterov=True)
+# scheduler = dict(type="MultiStepLR", milestones=[0.6, 0.8], gamma=0.1)
 
 # -----------------------------
 # Dataset settings
@@ -71,24 +74,24 @@ data = dict(
     train=dict(
         type=dataset_type,  
         split="train",
-        fold = 1,
+        debug=False,
+        fold = 6,
         data_root=data_root,
         plot=False,
         transform=[
             dict(
                 type='CustomRandomRotate',
-                angle=[-0.1, 0.1],
+                angle=[-0.05, 0.05],
                 center=[0, 0, 0],
                 axis='z',
                 p=0.5),
-            dict(type='CustomRandomRotate', angle=[-0.05, 0.05], axis='x', p=0.5),
-            dict(type='CustomRandomRotate', angle=[-0.05, 0.05], axis='y', p=0.5),
-            dict(type='CustomRandomScale', scale=[0.9, 1.0]),
+            dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
+            dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
+            dict(type='CustomRandomScale', scale=[0.9, 1.1]),
             dict(type='CustomRandomFlip', p=0.5),
             dict(
                 type='CustomRandomShift',
-                shift=((-0.02, 0.02), (-0.02, 0.02), (-0.02, 0.02))),
-            #dict(type='RandomJitter', sigma=0.005, clip=0.02),
+                shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
             dict(
                 type='GridSample',
                 grid_size=0.005,
@@ -107,7 +110,7 @@ data = dict(
     val=dict(  
         type=dataset_type,
         split="val",
-        fold = 1,
+        fold = 6,
         data_root=data_root,
         transform=[
             #dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line  
@@ -126,13 +129,13 @@ data = dict(
             ),
         ],
         test_mode=False,  
-    ),  
+    ),
     # inference
     test=dict(  
         type=dataset_type,
         data_root=data_root,
         split="test",
-        fold = 1,
+        fold = 6,
         transform=[
             #dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line
         ],
