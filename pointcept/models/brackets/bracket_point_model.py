@@ -42,6 +42,7 @@ class VoxelBracketPredictor(nn.Module):
         backbone_out_channels=96,  
         output_dim=3,  # 3D point coordinates
         save_predictions=False,
+        class_embedding=False,
         output_dir:str = "output"
     ):  
         super().__init__()
@@ -53,6 +54,7 @@ class VoxelBracketPredictor(nn.Module):
             raise ValueError("Unknown model mode. Please use either normal or offset.")
         self.output_dir = output_dir
         self.save_predictions = save_predictions
+        self.class_embedding=False,
         self.num_classes = 8 # FDI index % 10
         self.tooth_embedding_dim = 128
 
@@ -60,8 +62,9 @@ class VoxelBracketPredictor(nn.Module):
         self.embedder = nn.Embedding(self.num_classes, self.tooth_embedding_dim)
 
         # Regression head: outputs 3D point coordinates  
-        self.head = nn.Sequential(  
-            nn.Linear(backbone_out_channels + self.tooth_embedding_dim, 256),  
+        head_input = backbone_out_channels if not self.class_embedding else backbone_out_channels + self.tooth_embedding_dim
+        self.head = nn.Sequential( 
+            nn.Linear(head_input, 256),  
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.3),
@@ -120,11 +123,15 @@ class VoxelBracketPredictor(nn.Module):
             feat = point.feat    
         else:
             feat = point
-        class_indices = torch.tensor([int(x.split("_")[-1]) % 10 for x in input_dict["name"]], device=feat.device).long()  
-        class_embeddings = self.embedder(class_indices)
-        combined = torch.cat([feat, class_embeddings], dim=1)
-        # Predict 3D point
-        prediction= self.head(combined)
+        if self.class_embedding:
+            class_indices = torch.tensor([int(x.split("_")[-1]) % 10 for x in input_dict["name"]], device=feat.device).long()  
+            class_embeddings = self.embedder(class_indices)
+            input_tensor = torch.cat([feat, class_embeddings], dim=1)
+        else:
+            input_tensor = feat 
+
+        # Regress position of 3D points.
+        prediction= self.head(input_tensor)
         
         if self.mode == "normal":
             bracket_point_pred = prediction

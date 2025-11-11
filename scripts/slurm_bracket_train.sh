@@ -2,7 +2,7 @@
 #SBATCH --job-name=Pt_bracket_prediction
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --account=grana_maxillo
 #SBATCH --partition=all_serial
@@ -22,8 +22,8 @@ source /homes/mlugli/BracketPrediction/pointcept-brackets-venv/bin/activate
 export PYTHONPATH=./
 
 # Configuration
-CONFIG="configs/brackets/Pt.py"
-EXP_NAME="Pt_with_class"
+CONFIG="configs/brackets/Pt_normals.py"
+EXP_NAME="Pt_normals_noclass_nodebase"
 NUM_GPU=1
 
 # Training command

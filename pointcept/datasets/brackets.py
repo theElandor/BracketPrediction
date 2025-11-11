@@ -14,11 +14,8 @@ from pointcept.datasets.transform import Compose
 from pointcept.datasets.defaults import DefaultDataset
 from pathlib import Path
 import trimesh
-import plotly.graph_objects as go
-from stl import mesh
-import random
 from copy import deepcopy
-from pointcept.datasets.transform import TRANSFORMS  
+from pointcept.datasets.transform import TRANSFORMS
 
 @DATASETS.register_module()
 class BracketPointDataset(DefaultDataset):
@@ -32,14 +29,16 @@ class BracketPointDataset(DefaultDataset):
         point_count:int = 8192,
         split="train",
         debug=False,
-        fold = 1,
         transform=None,
         test_mode=False,
         test_cfg=None,
         plot=False,
         loop=1,
+        fold = 1, # fold to use
+        debased=False, # use debased meshes
     ):
         self.fold = fold
+        self.debased = debased
         super().__init__(
             split=split,
             data_root=data_root,
@@ -51,95 +50,38 @@ class BracketPointDataset(DefaultDataset):
         self.point_count = point_count
         self.plot = plot
         self.debug = debug
+        self.fallbacks = 0 # counter for malformed stl files
         if test_mode:
             self.post_transform = Compose(test_cfg.post_transform)  
             self.aug_transform = [Compose(aug) for aug in test_cfg.aug_transform]
-
-    def plot_stl_with_points_interactive(self, stl_path, bracket):
-        # Load STL mesh
-        debug_plots_path = "/work/grana_maxillo/Mlugli/debug_plots"
-        your_mesh = mesh.Mesh.from_file(stl_path)
-        vertices = your_mesh.vectors.reshape(-1, 3)
-        
-        # Create triangles for Plotly
-        x, y, z = vertices[:, 0], vertices[:, 1], vertices[:, 2]
-        i, j, k = (
-            np.arange(0, len(vertices), 3),
-            np.arange(1, len(vertices), 3),
-            np.arange(2, len(vertices), 3),
-        )
-
-        # Create Plotly figure
-        fig = go.Figure()
-
-        # Add mesh
-        fig.add_trace(
-            go.Mesh3d(
-                x=x, y=y, z=z,
-                i=i, j=j, k=k,
-                color='lightgray',
-                opacity=0.5,
-                flatshading=True,
-                name='Mesh'
-            )
-        )
-
-        # Add points
-        p1 = np.array(bracket, dtype=float)
-        fig.add_trace(go.Scatter3d(
-            x=[p1[0]], y=[p1[1]], z=[p1[2]],
-            mode='markers+text',
-            text=["P1"],
-            textposition="top center",
-            marker=dict(size=6, color='red'),
-            name='Gt'
-        ))
-        
-        # Layout and camera
-        fig.update_layout(
-            title=f"Interactive STL Visualization ({stl_path})",
-            scene=dict(
-                xaxis_title='X',
-                yaxis_title='Y',
-                zaxis_title='Z',
-                aspectmode='data'
-            ),
-            showlegend=True,
-            width=900,
-            height=700,
-        )
-        full_path = Path(stl_path)
-        base_name = full_path.stem
-        out_filename = Path(debug_plots_path) / f"{base_name}.png"
-        fig.write_image(out_filename)
  
     def get_data_list(self):
         """Load list of data samples from fold JSON files."""
-        # Load the appropriate fold file
         fold_file = os.path.join(self.data_root, f"split_{self.fold}.json")
-        
         if not os.path.exists(fold_file):
             raise FileNotFoundError(
                 f"Split file not found: {fold_file}\n"
                 f"Please run the split generation script first to create split_{self.fold}.json"
             )
-        
         with open(fold_file, 'r') as f:
             split_data = json.load(f)
-        
-        # Map split names
         split_mapping = {
             'train': 'train',
             'val': 'validation',
             'test': 'test'
         }
-        
         split_key = split_mapping.get(self.split)
         if split_key not in split_data:
             raise ValueError(f"Invalid split: {self.split}. Must be one of {list(split_mapping.keys())}")
-        
+
         # Get file paths from the split
-        file_paths = split_data[split_key]['files']
+        if not self.debased:
+            file_paths = split_data[split_key]['files']
+        else: # for samples in brackets_2 change path and take the debased file.
+            file_paths = [
+                x.replace('flattened', 'flattened_debased') if 'brackets_2' in x else x
+                for x in split_data[split_key]['files']
+            ]
         
         # Filter only .stl files and extract file names without extension
         # Also remove the path prefix to get just the filename
@@ -154,9 +96,38 @@ class BracketPointDataset(DefaultDataset):
         return file_names
     
     def _load_stl(self, stl_path):
-        mesh = trimesh.load(stl_path, force='mesh')
-        points, normals = trimesh.sample.sample_surface(mesh, count=self.point_count)
-        return points.astype(np.float32)
+        try:
+            # Try loading the primary file
+            mesh = trimesh.load(stl_path, force='mesh')
+            
+        except Exception as e_primary:
+            # If primary fails, log it and try the fallback
+            self.fallbacks += 1
+            based_file = stl_path.replace("flattened_debased", "flattened")
+            print(f"'{stl_path}' is broken (Error: {e_primary}). Fallback to '{based_file}'")
+            
+            try:
+                mesh = trimesh.load(based_file, force='mesh')
+            except Exception as e_fallback:
+                # If fallback also fails, log it and return None
+                print(f"FATAL: Fallback '{based_file}' also failed (Error: {e_fallback}).")
+                return None, None # Cannot proceed
+
+        # If we get here, 'mesh' is loaded. Now, sample it.
+        try:
+            # 1. Sample the surface to get points and the face index for each point
+            points, face_index = trimesh.sample.sample_surface(mesh, count=self.point_count)
+
+            # 2. Get the normals for those faces
+            normals = mesh.face_normals[face_index]
+
+            return points.astype(np.float32), normals.astype(np.float32)
+
+        except Exception as e_sample:
+            # Handle cases where the mesh loaded but couldn't be sampled
+            print(f"Loaded mesh '{mesh.metadata.get('file_name')}' but failed to sample: {e_sample}")
+            return None, None
+   
     
     def _load_json(self, json_path):
         with open(json_path, 'r') as f:
@@ -173,10 +144,11 @@ class BracketPointDataset(DefaultDataset):
         stl_path = os.path.join(self.data_root, file_rel_path)  
         json_path = os.path.join(self.data_root, file_rel_path.replace(".stl", ".json"))  
         
-        coord = self._load_stl(stl_path)
+        coord, normal = self._load_stl(stl_path)
         bracket_point, facial_point = self._load_json(json_path)
         d = {
             "coord": coord,  
+            "normal": normal,
             "name": Path(stl_path).stem,
             "bracket": bracket_point
         }

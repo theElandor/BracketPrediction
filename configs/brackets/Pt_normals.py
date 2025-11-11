@@ -1,3 +1,5 @@
+
+
 """  
 Configuration file for Bracket Point Prediction with Voxel-based Backbone
 """  
@@ -29,7 +31,7 @@ model = dict(
     type="VoxelBracketPredictor",
     backbone=dict(                          #  Backbone: Point Transformer V3 (v1m1)
         type="PT-v3m1",                     # as in cls-ptv3-v1m1-0-base
-        in_channels=3,                      # 3 xyz + 3 normals 
+        in_channels=6,                      # 3 xyz 
         enc_channels=(16, 32, 48, 64, 128),
         enc_num_head=(1, 2, 3, 4, 8),
         dec_channels=(32, 32, 64, 96),
@@ -72,8 +74,8 @@ scheduler = dict(
 dataset_type = "BracketPointDataset"  
 data_root = "/work/grana_maxillo/Mlugli/Brackets"  
 fold = 6 # Fold to use
-debased=True # Use debased data
-feat_keys = ["coord"]
+debased=False # Use debased data
+feat_keys = ["coord", "normal"]
 
 data = dict(
     train=dict(
@@ -167,9 +169,9 @@ data = dict(
             ],
             aug_transform=[  
                 [dict(type="RandomRotateTargetAngle", angle=[0], axis="z", center=[0, 0, 0], p=1)]  
-            ], 
-        ), 
-    ),
+            ],  
+        ),  
+    ),  
 )
   
 # -----------------------------
