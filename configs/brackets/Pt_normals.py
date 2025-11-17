@@ -44,22 +44,22 @@ model = dict(
     # output_dir will be unused if save_predictions is not set.
     output_dir = "/work/grana_maxillo/Mlugli/brackets_melted/model_predictions/json",
     output_dim=3,
-    #alpha=0.2 # Trying adding cosine similarity as an extra metric to improve precision
+    alpha=0.4, # Trying adding cosine similarity as an extra metric to improve precision
     class_embedding=False, # give class (FDI_index % 10) embedding to head.
-)  
+)
 
 # -----------------------------
 # Optimizer & Scheduler
 # -----------------------------
-epoch = 30
-eval_epoch = 30 # Set equal to epoch for single training run
+epoch = 40
+eval_epoch = 40 # Set equal to epoch for single training run
 clip_grad = 1.0
 
 optimizer = dict(type="AdamW", lr=0.0005, weight_decay=0.005)  
-scheduler = dict(  
+scheduler = dict(
     type="OneCycleLR",  
     max_lr=optimizer["lr"],  # References the optimizer's lr  
-    pct_start=0.10,
+    pct_start=0.20,
     anneal_strategy="cos", 
     div_factor=10.0,
     final_div_factor=100.0,
@@ -76,6 +76,7 @@ data_root = "/work/grana_maxillo/Mlugli/Brackets"
 fold = 6 # Fold to use
 debased=False # Use debased data
 feat_keys = ["coord", "normal"]
+grid_size = 0.005
 
 data = dict(
     train=dict(
@@ -100,9 +101,10 @@ data = dict(
             dict(
                 type='CustomRandomShift',
                 shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
+            #dict(type='RandomJitter', sigma=0.00125, clip=0.005),
             dict(
                 type='GridSample',
-                grid_size=0.005,
+                grid_size=grid_size,
                 hash_type='fnv',
                 mode='train',
                 return_grid_coord=True),
@@ -125,7 +127,7 @@ data = dict(
             #dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line  
             dict(
                 type="GridSample",
-                grid_size=0.005,
+                grid_size=grid_size,
                 hash_type="fnv",
                 mode="train",
                 return_grid_coord=True,  # This generates grid_coord
@@ -153,7 +155,7 @@ data = dict(
         test_cfg=dict(
             voxelize=dict(
                 type="GridSample",
-                grid_size=0.005, 
+                grid_size=grid_size, 
                 hash_type="fnv", 
                 mode="test",
                 return_grid_coord=True,  

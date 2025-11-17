@@ -27,9 +27,9 @@ wandb_project = "bracket_point_prediction"
 
 model = dict(
     type="VoxelBracketPredictor",
-    backbone=dict(                          #  Backbone: Point Transformer V3 (v1m1)
-        type="PT-v3m1",                     # as in cls-ptv3-v1m1-0-base
-        in_channels=3,                      # 3 xyz + 3 normals 
+    backbone=dict(                          
+        type="PT-v3m1", 
+        in_channels=3,                      # 3 xyz
         enc_channels=(16, 32, 48, 64, 128),
         enc_num_head=(1, 2, 3, 4, 8),
         dec_channels=(32, 32, 64, 96),
@@ -42,9 +42,9 @@ model = dict(
     # output_dir will be unused if save_predictions is not set.
     output_dir = "/work/grana_maxillo/Mlugli/brackets_melted/model_predictions/json",
     output_dim=3,
-    #alpha=0.2 # Trying adding cosine similarity as an extra metric to improve precision
-    class_embedding=False, # give class (FDI_index % 10) embedding to head.
-)  
+    alpha=0.4, # Trying adding cosine similarity as an extra metric to improve precision
+    class_embedding=True, # give class (FDI_index % 10) embedding to head.
+)
 
 # -----------------------------
 # Optimizer & Scheduler
@@ -53,7 +53,7 @@ epoch = 30
 eval_epoch = 30 # Set equal to epoch for single training run
 clip_grad = 1.0
 
-optimizer = dict(type="AdamW", lr=0.0005, weight_decay=0.005)  
+optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)  
 scheduler = dict(  
     type="OneCycleLR",  
     max_lr=optimizer["lr"],  # References the optimizer's lr  
@@ -63,18 +63,19 @@ scheduler = dict(
     final_div_factor=100.0,
 )
 
-# optimizer = dict(type="SGD", lr=0.001, momentum=0.9, weight_decay=0.0001, nesterov=True)
-# scheduler = dict(type="MultiStepLR", milestones=[0.6, 0.8], gamma=0.1)
-
 # -----------------------------
 # Dataset settings
 # -----------------------------  
 dataset_type = "BracketPointDataset"  
 data_root = "/work/grana_maxillo/Mlugli/Brackets"  
 fold = 6 # Fold to use
-debased=True # Use debased data
+debased=False # Use debased data
 feat_keys = ["coord"]
 
+# Custom augmentations are the same as the standard
+# pointcept augmentations but they apply the transform
+# also to the GT point, so that it is rotated/flipped/shifted
+# together with the coordinates.
 data = dict(
     train=dict(
         type=dataset_type,  
@@ -144,9 +145,6 @@ data = dict(
         fold=fold,
         debased=debased,
         split="test",
-        transform=[
-            #dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line
-        ],
         test_mode=True,
         test_cfg=dict(
             voxelize=dict(

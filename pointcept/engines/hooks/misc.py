@@ -568,9 +568,12 @@ class DisplacementEvaluator(HookBase):
     def eval(self):
         self.trainer.logger.info(">>>>>>>>>>>>>>>> Start Evaluation >>>>>>>>>>>>>>>>")  
         self.trainer.model.eval()  
-        
+
+        # store mean values        
+        loss_sum = 0.0
         mse_sum = 0.0
         cos_sim_sum = 0.0
+
         count = 0  
           
         for i, input_dict in enumerate(self.trainer.val_loader):  
@@ -583,39 +586,48 @@ class DisplacementEvaluator(HookBase):
 
             loss = output_dict["loss"]
             cos_sim = output_dict["cos_sim"]
-            mse_sum += loss.item()
+            mse = output_dict["mse"]
+
+            loss_sum += loss.item()
+            mse_sum += mse.item()
             cos_sim_sum += cos_sim.item()
             count += 1
 
             self.trainer.storage.put_scalar("val_loss", loss.item())  
-            self.trainer.storage.put_scalar("cos_sim", cos_sim.item())
+            self.trainer.storage.put_scalar("val_cos_sim", cos_sim.item())
+            self.trainer.storage.put_scalar("val_mse", mse.item())
           
-        mse_avg = mse_sum / count
+        loss_avg = loss_sum / count
         cos_sim_avg = cos_sim_sum / count
-        self.trainer.logger.info(f"Val result: MSE {mse_avg:.6f}")
-        self.trainer.logger.info(f"Metric: Cosine Similarity {cos_sim_avg:.6f}")
+        mse_avg = mse_sum / count
+        
+        self.trainer.logger.info(f"Loss: {loss_avg:.6f}")
+        self.trainer.logger.info(f"Metric: (mean) Cosine Similarity {cos_sim_avg:.6f}")
+        self.trainer.logger.info(f"Metric: (mean) Mean Squared Error {mse_avg:.6f}")
 
-        current_epoch = self.trainer.epoch + 1  
+        current_epoch = self.trainer.epoch + 1 
         if self.trainer.writer is not None:  
-            self.trainer.writer.add_scalar("val/mse", mse_avg, current_epoch)  
+            self.trainer.writer.add_scalar("val/loss", loss_avg, current_epoch)  
             self.trainer.writer.add_scalar("val/cos_sim", cos_sim_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/mse", mse_avg, current_epoch)
             # Add WandB logging  
             if self.trainer.cfg.enable_wandb:
                 wandb.log(
                     {  
                         "Epoch": current_epoch,  
+                        "val/loss": loss_avg,
                         "val/mse": mse_avg,
                         "val/cos_sim": cos_sim_avg,
-                    },  
+                    },
                     step=wandb.run.step, 
                 )  
           
-        # Store NEGATIVE MSE so that "higher is better" logic works  
-        self.trainer.comm_info["current_metric_value"] = -mse_avg  
-        self.trainer.comm_info["current_metric_name"] = "MSE"
+        # Store NEGATIVE Loss so that "higher is better" logic works  
+        self.trainer.comm_info["current_metric_value"] = -loss_avg  
+        self.trainer.comm_info["current_metric_name"] = "LOSS"
 
         self.trainer.logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")  
       
-    def after_train(self):  
-        best_mse = -self.trainer.best_metric_value  
-        self.trainer.logger.info(f"Best MSE: {best_mse:.6f}")
+    def after_train(self):
+        best_loss = -self.trainer.best_metric_value
+        self.trainer.logger.info(f"Best LOSS value: {best_loss:.6f}")

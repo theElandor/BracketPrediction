@@ -22,8 +22,8 @@ source /homes/mlugli/BracketPrediction/pointcept-brackets-venv/bin/activate
 export PYTHONPATH=./
 
 # Configuration
-CONFIG="configs/brackets/Pt_normals.py"
-EXP_NAME="Pt_normals_noclass_nodebase"
+CONFIG="configs/brackets/Pt.py"
+EXP_NAME="Pt_newData_classE"
 NUM_GPU=1
 
 # Training command

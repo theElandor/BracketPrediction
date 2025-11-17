@@ -54,7 +54,7 @@ class VoxelBracketPredictor(nn.Module):
             raise ValueError("Unknown model mode. Please use either normal or offset.")
         self.output_dir = output_dir
         self.save_predictions = save_predictions
-        self.class_embedding=False,
+        self.class_embedding=class_embedding
         self.num_classes = 8 # FDI index % 10
         self.tooth_embedding_dim = 128
 
@@ -124,13 +124,19 @@ class VoxelBracketPredictor(nn.Module):
         else:
             feat = point
         if self.class_embedding:
-            class_indices = torch.tensor([int(x.split("_")[-1]) % 10 for x in input_dict["name"]], device=feat.device).long()  
+            class_indices = torch.tensor([(int(x.split("_")[-1]) % 10)-1 for x in input_dict["name"]], device=feat.device).long()
+            # Check validity
+            invalid_mask = (class_indices < 0) | (class_indices > 8)
+            if invalid_mask.any(): print("Warning: clamping invalid class indices:", class_indices[invalid_mask].tolist())
+            class_indices = torch.clamp(class_indices, min=0, max=7)
+
             class_embeddings = self.embedder(class_indices)
             input_tensor = torch.cat([feat, class_embeddings], dim=1)
         else:
             input_tensor = feat 
 
         # Regress position of 3D points.
+
         prediction= self.head(input_tensor)
         
         if self.mode == "normal":
@@ -153,12 +159,12 @@ class VoxelBracketPredictor(nn.Module):
             # to toothInstanceNet "facial_point" landmark. 
             if self.save_predictions and not self.training: # plot only in inference.
                 self._save(input_dict, bracket_point_pred)
-
             mse = nn.functional.mse_loss(bracket_point_pred, target)
             cos_sim = nn.functional.cosine_similarity(bracket_point_pred, target).mean()
             out["cos_sim"] = cos_sim.detach() if self.alpha == 0 else cos_sim
+            out["mse"] = mse
             if self.alpha != 0:
-                out["loss"] = (1 - self.alpha) * mse + self.alpha * (-cos_sim)
+                out["loss"] = (1 - self.alpha) * mse + self.alpha * (1-cos_sim) # MSE and cosine distance
             else:
                 out["loss"] = mse
         return out

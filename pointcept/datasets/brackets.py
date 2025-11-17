@@ -99,7 +99,7 @@ class BracketPointDataset(DefaultDataset):
         try:
             # Try loading the primary file
             mesh = trimesh.load(stl_path, force='mesh')
-            
+
         except Exception as e_primary:
             # If primary fails, log it and try the fallback
             self.fallbacks += 1
@@ -113,7 +113,7 @@ class BracketPointDataset(DefaultDataset):
                 print(f"FATAL: Fallback '{based_file}' also failed (Error: {e_fallback}).")
                 return None, None # Cannot proceed
 
-        # If we get here, 'mesh' is loaded. Now, sample it.
+        # If we get here, 'mesh' is loaded. Now we can sample
         try:
             # 1. Sample the surface to get points and the face index for each point
             points, face_index = trimesh.sample.sample_surface(mesh, count=self.point_count)
@@ -146,6 +146,12 @@ class BracketPointDataset(DefaultDataset):
         
         coord, normal = self._load_stl(stl_path)
         bracket_point, facial_point = self._load_json(json_path)
+        assert type(coord) != type(None), f"Sample {stl_path} coordinates not loaded correctly."
+        assert type(normal) != type(None), f"Could not load normal for sample {stl_path}."
+
+        assert coord.shape == (self.point_count, 3), f"Wrongly shaped coordinates for sample {stl_path}"
+        assert normal.shape == (self.point_count, 3), f"Wrongly shaped normals for sample {stl_path}"
+        assert bracket_point.shape == (3,), f"Wrongly shaped bracket point for sample {stl_path}"
         d = {
             "coord": coord,  
             "normal": normal,
@@ -185,17 +191,17 @@ class BracketPointDataset(DefaultDataset):
     
         fragment_list = []
         for data in data_dict_list:
-            if self.test_voxelize is not None:  
-                data_part_list = self.test_voxelize(data)  
-            else:  
-                data["index"] = np.arange(data["coord"].shape[0])  
-                data_part_list = [data]  
-            for data_part in data_part_list:  
-                if self.test_crop is not None:  
-                    data_part = self.test_crop(data_part)  
+            if self.test_voxelize is not None:
+                data_part_list = self.test_voxelize(data)
+            else:
+                data["index"] = np.arange(data["coord"].shape[0])
+                data_part_list = [data]
+            for data_part in data_part_list:
+                if self.test_crop is not None:
+                    data_part = self.test_crop(data_part)
                 else:  
-                    data_part = [data_part]  
-                fragment_list += data_part  
+                    data_part = [data_part]
+                fragment_list += data_part
     
         for i in range(len(fragment_list)):  
             fragment_list[i] = self.post_transform(fragment_list[i])  
