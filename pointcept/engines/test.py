@@ -30,6 +30,15 @@ from pointcept.utils.misc import (
 )
 
 try:
+    import trimesh
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import Normalize
+    from matplotlib.cm import ScalarMappable
+except ImportError:
+    trimesh = None
+    plt = None
+
+try:
     import pointops
 except:
     pointops = None
@@ -1415,3 +1424,108 @@ class BracketTester(TesterBase):
     @staticmethod  
     def collate_fn(batch):  
         return batch  # Don't collate, just return the list
+
+@TESTERS.register_module()    
+class HeatmapTester(TesterBase):    
+    def test(self):    
+        assert self.test_loader.batch_size == 1    
+        logger = get_root_logger()    
+        logger.info(">>>>>>>>>>>>>>>> Start Evaluation >>>>>>>>>>>>>>>>")    
+            
+        batch_time = AverageMeter()    
+        mse_meter = AverageMeter()    
+        mae_meter = AverageMeter()    
+        self.model.eval()    
+            
+        save_path = os.path.join(self.cfg.save_path, "results")    
+        heatmap_path = os.path.join(save_path, "heatmaps")    
+        make_dirs(save_path)    
+        make_dirs(heatmap_path)    
+            
+        for idx, data_dict in enumerate(self.test_loader):    
+            start = time.time()    
+            data_dict = data_dict[0]    
+            fragment_list = data_dict.pop("fragment_list")    
+            segment = data_dict.pop("segment")    
+            data_name = data_dict.pop("name")    
+                
+            pred_save_path = os.path.join(heatmap_path, f"{data_name}_pred.npy")    
+                
+            if os.path.isfile(pred_save_path):    
+                logger.info(    
+                    f"{idx + 1}/{len(self.test_loader)}: {data_name}, loaded existing prediction."    
+                )    
+                pred = np.load(pred_save_path)    
+                if "origin_segment" in data_dict.keys():    
+                    segment = data_dict["origin_segment"]    
+            else:    
+                pred = torch.zeros(segment.size).cuda()    
+                    
+                for i in range(len(fragment_list)):    
+                    fragment_batch_size = 1  
+                    s_i, e_i = i * fragment_batch_size, min(    
+                        (i + 1) * fragment_batch_size, len(fragment_list)    
+                    )    
+                    input_dict = collate_fn(fragment_list[s_i:e_i])    
+                    for key in input_dict.keys():    
+                        if isinstance(input_dict[key], torch.Tensor):    
+                            input_dict[key] = input_dict[key].cuda(non_blocking=True)    
+                        
+                    idx_part = input_dict["index"]    
+                    with torch.no_grad():    
+                        output_dict = self.model(input_dict)    
+                        pred_part = output_dict["seg_logits"]    
+                        if pred_part.dim() > 1:    
+                            pred_part = pred_part.squeeze(-1)    
+                            
+                        if self.cfg.empty_cache:    
+                            torch.cuda.empty_cache()    
+                            
+                        bs = 0    
+                        for be in input_dict["offset"]:  
+                            pred[idx_part[bs:be]] += pred_part[bs:be]    
+                            bs = be    
+                        
+                    logger.info(    
+                        f"Test: {idx + 1}/{len(self.test_loader)}-{data_name}, "    
+                        f"Batch: {i}/{len(fragment_list)}"    
+                    )    
+                  
+                # CRITICAL FIX: Average predictions from all TTA fragments  
+                pred = pred / len(fragment_list)  
+                  
+                # Convert to numpy and clamp    
+                pred = pred.cpu().numpy()    
+                pred = np.clip(pred, 0.0, 1.0)    
+                    
+                # Handle inverse mapping    
+                if "origin_segment" in data_dict.keys():    
+                    assert "inverse" in data_dict.keys()    
+                    pred = pred[data_dict["inverse"]]    
+                    segment = data_dict["origin_segment"]    
+                    
+                np.save(pred_save_path, pred)    
+                
+            # Compute metrics    
+            mse = np.mean((pred - segment) ** 2)    
+            mae = np.mean(np.abs(pred - segment))    
+                
+            mse_meter.update(mse)    
+            mae_meter.update(mae)   
+                
+            batch_time.update(time.time() - start)    
+            logger.info(    
+                f"Test: {data_name} [{idx + 1}/{len(self.test_loader)}]-{segment.size} "    
+                f"Batch {batch_time.val:.3f} ({batch_time.avg:.3f}) "    
+                f"MSE {mse:.6f} ({mse_meter.avg:.6f}) "    
+                f"MAE {mae:.6f} ({mae_meter.avg:.6f})"    
+            )    
+            
+        logger.info(    
+            f"Val result: MSE/MAE {mse_meter.avg:.6f}/{mae_meter.avg:.6f}"    
+        )    
+        logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")    
+        
+    @staticmethod
+    def collate_fn(batch):  
+        return batch

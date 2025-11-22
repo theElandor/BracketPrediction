@@ -1,7 +1,7 @@
 ================TRAIN===================
 python tools/train.py --config-file /homes/mlugli/BracketPrediction/configs/brackets/Pt.py --num-gpus 1 --options save_path=/homes/mlugli/BracketPrediction/exp/brackets/debug
 ================TEST====================
-python tools/test.py --config-file /homes/mlugli/BracketPrediction/configs/brackets/PointTransformer_more_aug.py --options save_path=/homes/mlugli/BracketPrediction/exp/brackets/PT_new_dataset weight=/homes/mlugli/BracketPrediction/exp/brackets/PT_new_dataset/model/model_best.pth
+python tools/test.py --config-file /homes/mlugli/BracketPrediction/configs/brackets/Pt_map.py --options save_path=/homes/mlugli/BracketPrediction/exp/brackets/Pt_map_test weight=/homes/mlugli/BracketPrediction/exp/brackets/Pt_map_test/model/model_best.pth
 ================PLOT====================
 python plot_test_results.py --json_file /homes/mlugli/BracketPrediction/exp/brackets/PointTransformer_new_loader/results/predictions.json --stl_dir /work/grana_maxillo/Mlugli/brackets_melted/flattened/
 ================GLOBAL EVALUATION================

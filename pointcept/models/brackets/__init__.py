@@ -1,1 +1,2 @@
-from .bracket_point_model import VoxelBracketPredictor
+from .bracket_point_model import VoxelBracketPredictor, VoxelBracketPredictor_v2
+from .bracket_heatmap_seg import HeatmapRegressor

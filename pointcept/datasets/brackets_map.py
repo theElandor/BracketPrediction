@@ -18,7 +18,7 @@ from copy import deepcopy
 from pointcept.datasets.transform import TRANSFORMS
 
 @DATASETS.register_module()
-class BracketPointDataset(DefaultDataset):
+class BracketMapDataset(DefaultDataset):
     """
     Dataset for predicting bracket_point from STL files.
     """
@@ -50,35 +50,48 @@ class BracketPointDataset(DefaultDataset):
             self.aug_transform = [Compose(aug) for aug in test_cfg.aug_transform]
  
     def get_data_list(self):
-        """Load list of data samples from fold JSON files."""
-        fold_file = os.path.join(self.data_root, f"split_{self.fold}.json")
-        if not os.path.exists(fold_file):
-            raise FileNotFoundError(
-                f"Split file not found: {fold_file}\n"
-                f"Please run the split generation script first to create split_{self.fold}.json"
-            )
-        with open(fold_file, 'r') as f:
-            split_data = json.load(f)
+        """Load list of data samples from data_root with automatic 80/10/10 split."""
+        # Find all .stl files in data_root
+        all_stl_files = []
+        for root, dirs, files in os.walk(self.data_root):
+            for file in files:
+                if file.endswith('.stl'):
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, self.data_root)
+                    # Check if corresponding *_softlabel.npy file exists
+                    npy_path = os.path.join(self.data_root, rel_path.replace('.stl', '_softlabel.npy'))
+                    if os.path.exists(npy_path):
+                        all_stl_files.append(rel_path)
+        
+        if not all_stl_files:
+            raise ValueError(f"No .stl files with corresponding *_softlabel.npy files found in {self.data_root}")
+        
+        # Create deterministic 80/10/10 split using fixed seed
+        np.random.seed(42)
+        indices = np.arange(len(all_stl_files))
+        np.random.shuffle(indices)
+        
+        num_train = int(0.8 * len(all_stl_files))
+        num_val = int(0.1 * len(all_stl_files))
+        
+        train_indices = indices[:num_train]
+        val_indices = indices[num_train:num_train + num_val]
+        test_indices = indices[num_train + num_val:]
+        
         split_mapping = {
-            'train': 'train',
-            'val': 'validation',
-            'test': 'test'
+            'train': train_indices,
+            'val': val_indices,
+            'test': test_indices
         }
-        split_key = split_mapping.get(self.split)
-        if split_key not in split_data:
-            raise ValueError(f"Invalid split: {self.split}. Must be one of {list(split_mapping.keys())}")
 
-        # Get file paths from the split
-        file_paths = split_data[split_key]['files'] 
-        # Filter only .stl files and extract file names without extension
-        # Also remove the path prefix to get just the filename
-        file_names = []
-        for file_path in file_paths:
-            if file_path.endswith('.stl'):
-                file_names.append(file_path)
-        print(f"Loaded {len(file_names)} samples from fold {self.fold}, split {self.split}")
-        print(f"  Patients: {len(split_data[split_key]['patient_ids'])}")
-        print(f"  Total files (stl+json): {split_data[split_key]['num_files']}")
+        if self.split not in split_mapping:
+            raise ValueError(f"Invalid split: {self.split}. Must be one of {list(split_mapping.keys())}")
+        
+        selected_indices = split_mapping[self.split]
+        file_names = [all_stl_files[i] for i in selected_indices]
+        
+        print(f"Loaded {len(file_names)} samples from split {self.split}")
+        print(f"  Total train: {len(split_mapping['train'])}, val: {len(split_mapping['val'])}, test: {len(split_mapping['test'])}")
         
         return file_names
     
@@ -88,9 +101,20 @@ class BracketPointDataset(DefaultDataset):
             mesh = trimesh.load(stl_path, force='mesh')
             points = mesh.vertices
             normals = mesh.vertex_normals
-            return points.astype(np.float32), normals.astype(np.float32)   
+            return points.astype(np.float32), normals.astype(np.float32)
         except:
             print(f"Couldn't load sample {stl_path}")
+            raise
+   
+    def _load_heatmap(self, npy_path):  
+        """Load heatmap values from .npy file"""  
+        try:  
+            heatmap = np.load(npy_path)  
+            # Ensure it's float32 and 1D array  
+            heatmap = heatmap.astype(np.float32).reshape(-1)  
+            return heatmap  
+        except Exception as e:  
+            print(f"Couldn't load heatmap {npy_path}: {e}")  
             raise
     
     def _load_json(self, json_path):
@@ -106,39 +130,38 @@ class BracketPointDataset(DefaultDataset):
     def get_data(self, idx, testing=False):  
         file_rel_path = self.data_list[idx % len(self.data_list)]  
         stl_path = os.path.join(self.data_root, file_rel_path)  
-        json_path = os.path.join(self.data_root, file_rel_path.replace(".stl", ".json"))  
+        json_path = os.path.join(self.data_root, file_rel_path.replace(".stl", ".json"))
+        heatmap_path = os.path.join(self.data_root, file_rel_path.replace(".stl", "_softlabel.npy"))
         
         coord, normal = self._load_stl(stl_path)
         bracket_point, facial_point = self._load_json(json_path)
-        assert type(coord) != type(None), f"Sample {stl_path} coordinates not loaded correctly."
-        assert type(normal) != type(None), f"Could not load normal for sample {stl_path}."
-        assert bracket_point.shape == (3,), f"Wrongly shaped bracket point for sample {stl_path}"
+        segment = self._load_heatmap(heatmap_path)
+        assert segment.shape[0] == coord.shape[0], f"Segment shape not matching for sample {stl_path}"
         d = {
             "coord": coord,  
             "normal": normal,
             "name": Path(stl_path).stem,
-            "bracket": bracket_point
+            "bracket": bracket_point,
+            "segment": segment # heatmap to predict
         }
         # some corrections
         if facial_point is not None:
             d["facial"] = facial_point
-        if testing:
-            d["segment"] = bracket_point
         return d
     
     def prepare_test_data(self, idx):
         data_dict = self.get_data(idx, testing=True)  
         data_dict = self.transform(data_dict)
         
-        # Extract ground truth bracket_point and segment  
+        # ============Extract ground truth data==============
         result_dict = dict(
             segment=data_dict.pop("segment"),  
-            bracket =data_dict.pop("bracket"),  # Add this line 
+            bracket=data_dict.pop("bracket"),
             name=data_dict.get("name")
-        )  
-        
+        ) 
         if "facial" in data_dict:
             result_dict["facial"] = data_dict.pop("facial")
+        # ==================================================
 
         if "origin_segment" in data_dict:
             assert "inverse" in data_dict

@@ -22,9 +22,9 @@ source /homes/mlugli/BracketPrediction/pointcept-brackets-venv/bin/activate
 export PYTHONPATH=./
 
 # Configuration
-CONFIG="configs/brackets/Pt_map.py"
-EXP_NAME="Pt_map_test"
+CONFIG="configs/brackets/Pt_v2_stage2.py"
+EXP_NAME="Pt_stage2_huber"
 NUM_GPU=1
 
 # Training command
-python tools/train.py --config-file ${CONFIG} --num-gpus ${NUM_GPU} --options save_path=exp/brackets/${EXP_NAME}
+python tools/train.py --config-file ${CONFIG} --num-gpus ${NUM_GPU} --options save_path=exp/brackets/${EXP_NAME} weight=/homes/mlugli/BracketPrediction/exp/brackets/debug/model/model_best.pth

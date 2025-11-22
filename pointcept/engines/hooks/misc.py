@@ -631,3 +631,114 @@ class DisplacementEvaluator(HookBase):
     def after_train(self):
         best_loss = -self.trainer.best_metric_value
         self.trainer.logger.info(f"Best LOSS value: {best_loss:.6f}")
+
+
+
+@HOOKS.register_module()  
+class HeatmapEvaluator(HookBase):  
+    def __init__(self):  
+        pass  
+      
+    def before_train(self):  
+        if self.trainer.writer is not None and self.trainer.cfg.enable_wandb:  
+            wandb.define_metric("val/*", step_metric="Epoch")  
+      
+    def after_epoch(self):  
+        if self.trainer.cfg.evaluate:  
+            self.eval()  
+      
+    def eval(self):
+        self.trainer.logger.info(">>>>>>>>>>>>>>>> Start Evaluation >>>>>>>>>>>>>>>>")  
+        self.trainer.model.eval()  
+        all_predictions = [] 
+        for i, input_dict in enumerate(self.trainer.val_loader):  
+            for key in input_dict.keys():  
+                if isinstance(input_dict[key], torch.Tensor):  
+                    input_dict[key] = input_dict[key].cuda(non_blocking=True)  
+              
+            with torch.no_grad():  
+                output_dict = self.trainer.model(input_dict)  
+              
+            # Get predictions and clamp to [0, 1]  
+            heatmap_pred = output_dict["seg_logits"].squeeze(-1)  # Remove last dim if [N, 1]  
+            heatmap_pred = torch.clamp(heatmap_pred, 0.0, 1.0)  
+
+            all_predictions.append(heatmap_pred.cpu()) 
+            # Get ground truth  
+            segment = input_dict["segment"]  
+              
+            # Handle inverse mapping if present  
+            if "inverse" in input_dict.keys():  
+                assert "origin_segment" in input_dict.keys()  
+                heatmap_pred = heatmap_pred[input_dict["inverse"]]  
+                segment = input_dict["origin_segment"]  
+              
+            # Compute MSE and MAE
+            mse = F.mse_loss(heatmap_pred, segment)  
+            mae = F.l1_loss(heatmap_pred, segment)  
+            loss = output_dict["loss"]
+ 
+            mse = mse.item()  
+            mae = mae.item()  
+            loss = loss.item()  
+              
+            # Store metrics  
+            self.trainer.storage.put_scalar("val_mse", mse)  
+            self.trainer.storage.put_scalar("val_mae", mae)  
+            self.trainer.storage.put_scalar("val_loss", loss)  
+              
+            info = "Test: [{iter}/{max_iter}] ".format(  
+                iter=i + 1, max_iter=len(self.trainer.val_loader)  
+            )  
+            if "origin_coord" in input_dict.keys():  
+                info = "Interp. " + info  
+            self.trainer.logger.info(  
+                info + "Loss {loss:.6f} MSE {mse:.6f} MAE {mae:.6f}".format(  
+                    loss=loss, mse=mse, mae=mae  
+                )  
+            )  
+          
+        # Compute averages  
+        loss_avg = self.trainer.storage.history("val_loss").avg  
+        mse_avg = self.trainer.storage.history("val_mse").avg  
+        mae_avg = self.trainer.storage.history("val_mae").avg 
+
+        all_predictions = torch.cat(all_predictions, dim=0)
+          
+        self.trainer.logger.info(  
+            "Val result: Loss/MSE/MAE {:.6f}/{:.6f}/{:.6f}".format(  
+                loss_avg, mse_avg, mae_avg  
+            )  
+        )  
+          
+        current_epoch = self.trainer.epoch + 1  
+        if self.trainer.writer is not None:  
+            self.trainer.writer.add_scalar("val/loss", loss_avg, current_epoch)  
+            self.trainer.writer.add_scalar("val/MSE", mse_avg, current_epoch)  
+            self.trainer.writer.add_scalar("val/MAE", mae_avg, current_epoch)  
+            self.trainer.writer.add_histogram(
+                "val/predictions_distribution",
+                all_predictions,
+                current_epoch
+            )
+            if self.trainer.cfg.enable_wandb:  
+                wandb.log(  
+                    {
+                        "Epoch": current_epoch,  
+                        "val/loss": loss_avg,  
+                        "val/MSE": mse_avg,  
+                        "val/MAE": mae_avg,  
+                        "val/predictions_histogram": wandb.Histogram(all_predictions.numpy()),
+                    },  
+                    step=wandb.run.step,  
+                )  
+          
+        self.trainer.logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")  
+        # Save MSE as the metric for checkpoint saving (lower is better)  
+        self.trainer.comm_info["current_metric_value"] = -mse_avg  # Negative because CheckpointSaver maximizes  
+        self.trainer.comm_info["current_metric_name"] = "MSE"  
+      
+    def after_train(self):  
+        self.trainer.logger.info(  
+            "Best MSE: {:.6f}".format(-self.trainer.best_metric_value)  # Negate back  
+        )

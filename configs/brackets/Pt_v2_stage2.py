@@ -15,18 +15,17 @@ enable_amp = True
 # -----------------------------
 # Wandb settings
 # -----------------------------
-enable_wandb = True
+enable_wandb = False
 wandb_project = "bracket_point_prediction"
 
 # -----------------------------
-# Model settings, Using SpUNet backbone
 # Make sure to use cls_mode=True so that the 
 # decoding part of the backbone architecture (producing
 # the segmentation) is not used.
 # -----------------------------
 
 model = dict(
-    type="VoxelBracketPredictor",
+    type="VoxelBracketPredictor_v2",
     backbone=dict(                          
         type="PT-v3m1", 
         in_channels=3,                      # 3 xyz
@@ -34,16 +33,16 @@ model = dict(
         enc_num_head=(1, 2, 3, 4, 8),
         dec_channels=(32, 32, 64, 96),
         dec_num_head=(2, 2, 4, 6),
-        enable_flash=False,                 # True if AMPERE gpu arch
+        enable_flash=False,          # True if AMPERE gpu arch
         cls_mode=True,
     ),
     backbone_out_channels=128,
     save_predictions = False,
-    # output_dir will be unused if save_predictions is not set.
-    output_dir = "/work/grana_maxillo/Mlugli/brackets_melted/model_predictions/json",
     output_dim=3,
     alpha=0.4, # Trying adding cosine similarity as an extra metric to improve precision
-    class_embedding=True, # give class (FDI_index % 10) embedding to head.
+    freeze_backbone=True,
+    freeze_coarse=True,
+    use_refinement=True
 )
 
 # -----------------------------
@@ -71,7 +70,7 @@ data_root = "/work/grana_maxillo/Mlugli/Brackets"
 fold = 6 # Fold to use
 debased=False # Use debased data
 feat_keys = ["coord"]
-
+grid_size = 0.005
 # Custom augmentations are the same as the standard
 # pointcept augmentations but they apply the transform
 # also to the GT point, so that it is rotated/flipped/shifted
@@ -101,7 +100,7 @@ data = dict(
                 shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
             dict(
                 type='GridSample',
-                grid_size=0.01,
+                grid_size=grid_size,
                 hash_type='fnv',
                 mode='train',
                 return_grid_coord=True),
@@ -114,17 +113,16 @@ data = dict(
         test_mode=False
     ),  
   
-    val=dict(  
+    val=dict(
         type=dataset_type,
         split="val",
         data_root=data_root,
         fold=fold,
         debased=debased,
         transform=[
-            #dict(type="Update", keys_dict={"index_valid_keys": ["coord"]}),  # Add this line  
             dict(
                 type="GridSample",
-                grid_size=0.01,
+                grid_size=grid_size,
                 hash_type="fnv",
                 mode="train",
                 return_grid_coord=True,  # This generates grid_coord
@@ -149,7 +147,7 @@ data = dict(
         test_cfg=dict(
             voxelize=dict(
                 type="GridSample",
-                grid_size=0.01, 
+                grid_size=grid_size,
                 hash_type="fnv", 
                 mode="test",
                 return_grid_coord=True,  
@@ -159,7 +157,7 @@ data = dict(
                 dict(type="ToTensor"),
                 dict(
                     type="Collect",
-                    keys=("coord", "grid_coord", "index"),
+                    keys=("coord", "grid_coord", "index", "name"),
                     feat_keys=feat_keys,
                 ),
             ],
@@ -169,14 +167,17 @@ data = dict(
         ), 
     ),
 )
-  
+ 
 # -----------------------------
 # Hooks
 # Default ones + DisplacementEvaluator that
 # computes the loss of the regression task.
 # -----------------------------
-hooks = [  
-    dict(type="CheckpointLoader"),  
+hooks = [
+    dict(type="CheckpointLoader",
+        keywords = "module.",
+        replacement = "module.",
+    ),  
     dict(type="IterationTimer", warmup_iter=2),  
     dict(type="InformationWriter"),  
     dict(type="DisplacementEvaluator"), 
