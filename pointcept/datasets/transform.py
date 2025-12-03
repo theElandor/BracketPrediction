@@ -207,11 +207,9 @@ class CustomRandomShift(object):
             shift_y = np.random.uniform(self.shift[1][0], self.shift[1][1])
             shift_z = np.random.uniform(self.shift[2][0], self.shift[2][1])
             data_dict["coord"] += [shift_x, shift_y, shift_z]
-            for custom_point in ["bracket", "facial"]:
-                if custom_point in data_dict:
+            for custom_point in ["bracket", "incisal", "outer"]:
+                if custom_point in data_dict and type(data_dict[custom_point]) == np.ndarray:
                     data_dict[custom_point] += [shift_x, shift_y, shift_z]
-            if "facial" in data_dict:
-                data_dict["facial"] += [shift_x, shift_y, shift_z]           
         return data_dict
 
 @TRANSFORMS.register_module()
@@ -320,8 +318,8 @@ class CustomRandomRotate(object):
             data_dict["coord"] -= center
             data_dict["coord"] = np.dot(data_dict["coord"], np.transpose(rot_t))
             data_dict["coord"] += center
-            for custom_point in ["bracket", "facial"]:
-                if custom_point in data_dict.keys():
+            for custom_point in ["bracket", "incisal", "outer"]:
+                if custom_point in data_dict.keys() and type(data_dict[custom_point]) == np.ndarray:
                     data_dict[custom_point] -= center
                     data_dict[custom_point] = np.dot(data_dict[custom_point], np.transpose(rot_t))
                     data_dict[custom_point] += center
@@ -396,8 +394,8 @@ class CustomRandomScale(object):
                 self.scale[0], self.scale[1], 3 if self.anisotropic else 1
             )
             data_dict["coord"] *= scale
-            for custom_point in ["bracket", "facial"]:
-                if custom_point in data_dict.keys():
+            for custom_point in ["bracket", "incisal", "outer"]:
+                if custom_point in data_dict.keys() and type(data_dict[custom_point]) == np.ndarray:
                     data_dict[custom_point] *= scale
             return data_dict
 
@@ -434,15 +432,19 @@ class CustomRandomFlip(object):
                 data_dict["normal"][:, 0] = -data_dict["normal"][:, 0]
             if "bracket" in data_dict.keys():  
                 data_dict["bracket"][0] = -data_dict["bracket"][0]  # Only flip x  
-            if "facial" in data_dict.keys():  
-                data_dict["facial"][0] = -data_dict["facial"][0]  # Only flip x 
+            if "incisal" in data_dict.keys() and type(data_dict["incisal"]) == np.ndarray:  
+                data_dict["incisal"][0] = -data_dict["incisal"][0]  # Only flip x  
+            if "outer" in data_dict.keys() and type(data_dict["outer"]) == np.ndarray:  
+                data_dict["outer"][0] = -data_dict["outer"][0]  # Only flip x  
         if np.random.rand() < self.p: # random flip on Y axis
             if "coord" in data_dict.keys():
                 data_dict["coord"][:, 1] = -data_dict["coord"][:, 1]
-            if "bracket" in data_dict.keys():  
+            if "bracket" in data_dict.keys():
                 data_dict["bracket"][1] = -data_dict["bracket"][1]  # Only flip y  
-            if "facial" in data_dict.keys():  
-                data_dict["facial"][1] = -data_dict["facial"][1]  # Only flip y
+            if "incisal" in data_dict.keys() and type(data_dict["incisal"]) == np.ndarray:
+                data_dict["incisal"][1] = -data_dict["incisal"][1]  # Only flip y  
+            if "outer" in data_dict.keys() and type(data_dict["outer"]) == np.ndarray:
+                data_dict["outer"][1] = -data_dict["outer"][1]  # Only flip y  
             if "normal" in data_dict.keys():
                 data_dict["normal"][:, 1] = -data_dict["normal"][:, 1]
         return data_dict

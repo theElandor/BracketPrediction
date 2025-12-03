@@ -1,0 +1,179 @@
+"""    
+Configuration to train a IOS semantic segmentator
+"""    
+_base_ = ["../_base_/default_runtime.py"]  
+  
+# -----------------------------  
+# Misc settings
+# -----------------------------  
+num_classes = 17 # 16 FDI Indices + Gum
+ignore_index = -1
+
+batch_size = 16
+num_worker = 8 # for train
+mix_prob = 0
+empty_cache = False
+enable_amp = True
+ 
+# -----------------------------  
+# Wandb settings  
+# -----------------------------  
+enable_wandb = True
+wandb_project = "bracket_point_prediction"  
+  
+# -----------------------------  
+# Model settings  
+# -----------------------------  
+model = dict(
+    type="DefaultSegmentorV2",
+    num_classes = num_classes,
+    backbone_out_channels = 64,
+    backbone=dict(
+        type="PT-v3m1",
+        in_channels=3,
+        enc_depths=(2, 2, 2, 6, 2),
+        enc_channels=(32, 64, 128, 256, 512),
+        enc_num_head=(2, 4, 8, 16, 32),
+        dec_depths=(2, 2, 2, 2),
+        dec_channels=(64, 64, 128, 256),
+        dec_num_head=(4, 4, 8, 16),
+        mlp_ratio=4,
+        enable_flash=False,
+        cls_mode=False,
+    ),
+    criteria=[  
+        dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=ignore_index),
+    ],
+)
+ 
+# -----------------------------
+# Optimizer & Scheduler  
+# -----------------------------
+epoch = 60
+eval_epoch = 60
+clip_grad = 1.0
+ 
+optimizer = dict(type="AdamW", lr=0.0005, weight_decay=0.05)
+scheduler = dict(
+    type="OneCycleLR",
+    max_lr=optimizer["lr"],
+    pct_start=0.15,
+    anneal_strategy="cos",
+    div_factor=10.0,
+    final_div_factor=100.0,
+)
+
+# -----------------------------  
+# Dataset settings  
+# -----------------------------    
+dataset_type = "IosDataset"
+data_root = "/work/grana_maxillo/IOS_v1"
+feat_keys = ["coord"]  
+grid_size = 0.01
+fold = "/work/grana_maxillo/Mlugli/IOS_v1_files/folds/fold_1.json"
+ 
+data = dict(
+    num_classes = num_classes,
+    ignore_index = ignore_index,
+    names = [
+        "Gum", "48-28","47-27", "46-26", "45-25", "44-24", "43-23", "42-22", "41-21",
+        "31-11", "32-12", "33-13", "34-14", "35-15", "36-16", "37-17", "38-18"
+    ],
+    train=dict(  
+        type=dataset_type,    
+        split="train", 
+        fold=fold, 
+        data_root=data_root,
+        ignore_index = ignore_index,
+        transform=[
+            dict(type='RandomRotate', angle=[-0.05, 0.05], center=[0, 0, 0], axis='z', p=0.5),  
+            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),  
+            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),  
+            dict(type='RandomScale', scale=[0.9, 1.1]),  
+            dict(type='RandomShift', shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
+            dict(type='NormalizeCoord'),
+            dict(
+                type='GridSample',
+                grid_size=grid_size,
+                hash_type='fnv',
+                mode='train',
+                return_grid_coord=True),
+            dict(type='ToTensor'),
+            dict(
+                type='Collect',  
+                keys=['coord', 'grid_coord', 'name', 'segment'],
+                feat_keys=feat_keys)
+        ],
+        test_mode=False
+    ), 
+    
+    val=dict(
+        type=dataset_type,  
+        split="val",  
+        fold=fold,
+        data_root=data_root,  
+        ignore_index=ignore_index,
+        transform=[
+            dict(type="Copy", keys_dict={"segment": "origin_segment"}),
+            dict(type="NormalizeCoord"),
+            dict(
+                type="GridSample",
+                grid_size=grid_size,
+                hash_type="fnv",
+                mode="train",
+                return_grid_coord=True,
+                return_inverse=True,
+            ),  
+            dict(type="ToTensor"),
+            dict(
+                type="Collect",
+                keys=["coord", "grid_coord", "segment", "origin_segment", "inverse", "name"],
+                feat_keys=feat_keys,
+            ),  
+        ],  
+        test_mode=False,  
+    ),  
+  
+    test=dict(    
+        type=dataset_type,
+        split="test",
+        fold=fold,
+        data_root=data_root,
+        ignore_index = ignore_index,
+        transform=[
+            dict(type="NormalizeCoord"),
+        ],
+        test_mode=True,
+        test_cfg=dict(
+            voxelize=dict(
+                type="GridSample",
+                grid_size=grid_size,
+                hash_type="fnv",
+                mode="test",
+                return_grid_coord=True,
+            ),
+            crop=None,
+            post_transform=[
+                dict(type="ToTensor"),
+                dict(type="Collect", keys=("coord", "grid_coord", "index"), feat_keys=feat_keys),
+            ],  
+            aug_transform=[
+                [dict(type="RandomRotateTargetAngle", angle=[0], axis="z", center=[0, 0, 0], p=1)]
+            ],
+        ),
+    ),
+)
+   
+# -----------------------------
+# Hooks  
+# -----------------------------
+hooks = [  
+    dict(type="CheckpointLoader"),  
+    dict(type="ModelHook"),  
+    dict(type="IterationTimer", warmup_iter=2),  
+    dict(type="InformationWriter"),  
+    dict(type="SemSegEvaluator"),  
+    dict(type="CheckpointSaver", save_freq=None),  
+    dict(type="PreciseEvaluator", test_last=False),  
+]
+test = dict(type="SemSegTester")

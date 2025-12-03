@@ -1425,6 +1425,145 @@ class BracketTester(TesterBase):
     def collate_fn(batch):  
         return batch  # Don't collate, just return the list
 
+@TESTERS.register_module()  
+class BracketTester_v2(TesterBase):  
+    def test(self):  
+        assert self.test_loader.batch_size == 1  
+        self.logger.info(">>>>>>>>>>>>>>>> Start Inference >>>>>>>>>>>>>>>>")  
+        self.model.eval()  
+        results = []  
+        predictions_dict = {}  # Dictionary to store all predictions  
+        
+        # Create results directory in model folder  
+        save_path = os.path.join(self.cfg.save_path, "results")  
+        os.makedirs(save_path, exist_ok=True)  
+        
+        for idx, data_dict in enumerate(self.test_loader):  
+            data_dict = data_dict[0]  
+            fragment_list = data_dict.pop("fragment_list")  
+            data_name = data_dict.pop("name")  
+            
+            # Extract ground truth points (may be None)
+            bracket_point_gt = data_dict.pop("bracket", None)  
+            incisal_point_gt = data_dict.pop("incisal", None)  
+            outer_point_gt = data_dict.pop("outer", None)  
+            
+            # Move ground truth to GPU if available
+            if bracket_point_gt is not None:
+                if isinstance(bracket_point_gt, np.ndarray):  
+                    bracket_point_gt = torch.from_numpy(bracket_point_gt).cuda()  
+                elif isinstance(bracket_point_gt, torch.Tensor):  
+                    bracket_point_gt = bracket_point_gt.cuda()  
+            
+            if incisal_point_gt is not None:
+                if isinstance(incisal_point_gt, np.ndarray):  
+                    incisal_point_gt = torch.from_numpy(incisal_point_gt).cuda()  
+                elif isinstance(incisal_point_gt, torch.Tensor):  
+                    incisal_point_gt = incisal_point_gt.cuda()  
+            
+            if outer_point_gt is not None:
+                if isinstance(outer_point_gt, np.ndarray):  
+                    outer_point_gt = torch.from_numpy(outer_point_gt).cuda()  
+                elif isinstance(outer_point_gt, torch.Tensor):  
+                    outer_point_gt = outer_point_gt.cuda()  
+            
+            # Accumulate predictions across fragments (shape: [1, 9] -> [bracket, incisal, outer])
+            pred_sum = torch.zeros(1, 9).cuda()  
+
+            self.logger.info("Processing {} fragments.".format(len(fragment_list))) 
+            for fragment in fragment_list:
+                for key in fragment.keys():  
+                    if isinstance(fragment[key], torch.Tensor):  
+                        fragment[key] = fragment[key].cuda(non_blocking=True)  
+                
+                with torch.no_grad():  
+                    output = self.model(fragment)  
+                    pred_sum += output["bracket_point_pred"]  
+            
+            # Average across fragments
+            pred = (pred_sum / len(fragment_list)).squeeze(0).cpu()  
+            
+            # Reshape to 3 points: [bracket, incisal, outer]
+            pred_reshaped = pred.reshape(3, 3).numpy()
+            bracket_pred = pred_reshaped[0]
+            incisal_pred = pred_reshaped[1]
+            outer_pred = pred_reshaped[2]
+            
+            # Store all predictions in dictionary  
+            predictions_dict[data_name] = {
+                "bracket": bracket_pred.tolist(),
+                "incisal": incisal_pred.tolist(),
+                "outer": outer_pred.tolist(),
+            }
+            
+            # Calculate errors if ground truth available
+            sample_result = {"name": data_name}
+            
+            if bracket_point_gt is not None:
+                bracket_error = torch.norm(torch.from_numpy(bracket_pred).float() - bracket_point_gt.cpu()).item()  
+                sample_result["bracket_error"] = bracket_error
+            
+            if incisal_point_gt is not None:
+                incisal_error = torch.norm(torch.from_numpy(incisal_pred).float() - incisal_point_gt.cpu()).item()  
+                sample_result["incisal_error"] = incisal_error
+            
+            if outer_point_gt is not None:
+                outer_error = torch.norm(torch.from_numpy(outer_pred).float() - outer_point_gt.cpu()).item()  
+                sample_result["outer_error"] = outer_error
+            
+            if sample_result:
+                results.append(sample_result)
+                log_msg = f"Test: {data_name}"
+                if "bracket_error" in sample_result:
+                    log_msg += f", Bracket Error: {sample_result['bracket_error']:.4f}"
+                if "incisal_error" in sample_result:
+                    log_msg += f", Incisal Error: {sample_result['incisal_error']:.4f}"
+                if "outer_error" in sample_result:
+                    log_msg += f", Outer Error: {sample_result['outer_error']:.4f}"
+                self.logger.info(log_msg)
+        
+        # Save all predictions to single JSON file
+        predictions_file = os.path.join(save_path, "predictions.json")  
+        with open(predictions_file, "w") as f:  
+            json.dump(predictions_dict, f, indent=4)  
+        
+        # Save summary with errors
+        summary_data = {
+            "total_samples": len(results),
+            "results": results,
+        }
+        
+        # Compute mean errors
+        bracket_errors = [r["bracket_error"] for r in results if "bracket_error" in r]
+        incisal_errors = [r["incisal_error"] for r in results if "incisal_error" in r]
+        outer_errors = [r["outer_error"] for r in results if "outer_error" in r]
+        
+        if bracket_errors:
+            summary_data["mean_bracket_error"] = float(np.mean(bracket_errors))
+        if incisal_errors:
+            summary_data["mean_incisal_error"] = float(np.mean(incisal_errors))
+        if outer_errors:
+            summary_data["mean_outer_error"] = float(np.mean(outer_errors))
+
+        summary_file = os.path.join(save_path, "summary.json")  
+        with open(summary_file, "w") as f:  
+            json.dump(summary_data, f, indent=4)  
+        
+        # Log summary
+        if bracket_errors:
+            self.logger.info(f"Mean Bracket Error: {summary_data['mean_bracket_error']:.4f}")  
+        if incisal_errors:
+            self.logger.info(f"Mean Incisal Error: {summary_data['mean_incisal_error']:.4f}")  
+        if outer_errors:
+            self.logger.info(f"Mean Outer Error: {summary_data['mean_outer_error']:.4f}")  
+        self.logger.info(f"Predictions saved to: {predictions_file}")
+        self.logger.info("<<<<<<<<<<<<<<<<< End Inference <<<<<<<<<<<<<<<<<")
+      
+    @staticmethod  
+    def collate_fn(batch):  
+        return batch  # Don't collate, just return the list
+
+
 @TESTERS.register_module()    
 class HeatmapTester(TesterBase):    
     def test(self):    
@@ -1441,6 +1580,9 @@ class HeatmapTester(TesterBase):
         heatmap_path = os.path.join(save_path, "heatmaps")    
         make_dirs(save_path)    
         make_dirs(heatmap_path)    
+        
+        # Dictionary to store results in the format: sample_name -> [coord_x, coord_y, coord_z]
+        all_results = {}
             
         for idx, data_dict in enumerate(self.test_loader):    
             start = time.time()    
@@ -1448,6 +1590,7 @@ class HeatmapTester(TesterBase):
             fragment_list = data_dict.pop("fragment_list")    
             segment = data_dict.pop("segment")    
             data_name = data_dict.pop("name")    
+            bracket = data_dict.pop("bracket", None)  # Get bracket point if available
                 
             pred_save_path = os.path.join(heatmap_path, f"{data_name}_pred.npy")    
                 
@@ -1521,9 +1664,49 @@ class HeatmapTester(TesterBase):
                 f"MAE {mae:.6f} ({mae_meter.avg:.6f})"    
             )    
             
+            # Compute proposal point from top 5% of heatmap values
+            try:
+                full_path = data_dict.get("full_path")
+                if full_path and os.path.exists(full_path):
+                    mesh = trimesh.load(full_path, force="mesh")
+                    verts = np.asarray(mesh.vertices)
+                    
+                    if verts.shape[0] == pred.shape[0]:
+                        # Get top 5% threshold
+                        pct = 100.0 - 5.0
+                        thresh = np.percentile(pred, pct)
+                        mask = pred >= thresh
+                        inds = np.nonzero(mask)[0]
+                        
+                        if inds.size == 0:
+                            # fallback to max
+                            max_idx = int(np.argmax(pred))
+                            proposal = verts[max_idx].astype(np.float64)
+                        else:
+                            weights = pred[inds].astype(np.float64)
+                            wsum = weights.sum()
+                            if wsum == 0:
+                                max_idx = int(np.argmax(pred))
+                                proposal = verts[max_idx].astype(np.float64)
+                            else:
+                                proposal = (verts[inds].astype(np.float64).T @ weights) / wsum
+                        all_results[data_name] = proposal.tolist()
+            except Exception as e:
+                logger.warning(f"Failed to compute proposal for {data_name}: {e}")
+            
         logger.info(    
             f"Val result: MSE/MAE {mse_meter.avg:.6f}/{mae_meter.avg:.6f}"    
         )    
+        
+        # Save all results to JSON file
+        results_json_path = os.path.join(save_path, "results.json")
+        try:
+            with open(results_json_path, 'w') as f:
+                json.dump(all_results, f, indent=4)
+            logger.info(f"Saved results to {results_json_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save results JSON: {e}")
+        
         logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")    
         
     @staticmethod

@@ -22,7 +22,7 @@ class HeatmapRegressor(nn.Module):
             while "pooling_parent" in point.keys():  
                 parent = point.pop("pooling_parent")  
                 inverse = point.pop("pooling_inverse")
-                parent.feat = torch.cat([parent.feat, point.feat[inverse]], dim=-1)  
+                parent.feat = torch.cat([parent.feat, point.feat[inverse]], dim=-1)
                 point = parent  
             feat = point.feat  
         else:

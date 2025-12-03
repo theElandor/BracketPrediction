@@ -560,23 +560,32 @@ class DisplacementEvaluator(HookBase):
         # Define metric step for WandB  
         if self.trainer.writer is not None and self.trainer.cfg.enable_wandb:  
             wandb.define_metric("val/*", step_metric="Epoch")  
-      
-    def after_epoch(self):  
+ 
+    def after_epoch(self):
         if self.trainer.cfg.evaluate:  
-            self.eval()  
+            self.eval()
       
     def eval(self):
         self.trainer.logger.info(">>>>>>>>>>>>>>>> Start Evaluation >>>>>>>>>>>>>>>>")  
         self.trainer.model.eval()  
 
-        # store mean values        
+        # store sum values        
         loss_sum = 0.0
-        mse_sum = 0.0
-        cos_sim_sum = 0.0
+        mae_sum = 0.0
+        cos_dist_sum = 0.0
+        collinearity_loss_sum = 0.0
 
-        count = 0  
+        bracket_mae_sum = 0.0
+        incisal_mae_sum = 0.0
+        outer_mae_sum = 0.0
+
+        bracket_cos_dist_sum = 0.0
+        incisal_cos_dist_sum = 0.0
+        outer_cos_dist_sum = 0.0
+
+        count = 0
           
-        for i, input_dict in enumerate(self.trainer.val_loader):  
+        for i, input_dict in enumerate(self.trainer.val_loader):
             for key in input_dict.keys():  
                 if isinstance(input_dict[key], torch.Tensor):  
                     input_dict[key] = input_dict[key].cuda(non_blocking=True)  
@@ -585,48 +594,93 @@ class DisplacementEvaluator(HookBase):
                 output_dict = self.trainer.model(input_dict)
 
             loss = output_dict["loss"]
-            cos_sim = output_dict["cos_sim"]
-            mse = output_dict["mse"]
-
+            cos_dist = output_dict["cos_dist"]
+            mae = output_dict["mae"]
+            collinearity_loss = output_dict["collinearity_loss"]
+            bracket_mae = output_dict["bracket_mae"]
+            incisal_mae = output_dict["incisal_mae"]
+            outer_mae = output_dict["outer_mae"]
+            bracket_cos_dist = output_dict["bracket_cos_dist"]
+            incisal_cos_dist = output_dict["incisal_cos_dist"]
+            outer_cos_dist = output_dict["outer_cos_dist"]
+            
             loss_sum += loss.item()
-            mse_sum += mse.item()
-            cos_sim_sum += cos_sim.item()
+            mae_sum += mae.item()
+            cos_dist_sum += cos_dist.item()
+            collinearity_loss_sum += collinearity_loss.item()
+            bracket_mae_sum += bracket_mae.item()
+            incisal_mae_sum += incisal_mae.item()
+            outer_mae_sum += outer_mae.item()
+            bracket_cos_dist_sum += bracket_cos_dist.item()
+            incisal_cos_dist_sum += incisal_cos_dist.item()
+            outer_cos_dist_sum += outer_cos_dist.item()
+            
             count += 1
 
             self.trainer.storage.put_scalar("val_loss", loss.item())  
-            self.trainer.storage.put_scalar("val_cos_sim", cos_sim.item())
-            self.trainer.storage.put_scalar("val_mse", mse.item())
+            self.trainer.storage.put_scalar("val_cos_dist", cos_dist.item())
+            self.trainer.storage.put_scalar("val_mae", mae.item())
+            self.trainer.storage.put_scalar("val_collinearity_loss", collinearity_loss.item())
           
+        # Compute averages
         loss_avg = loss_sum / count
-        cos_sim_avg = cos_sim_sum / count
-        mse_avg = mse_sum / count
+        cos_dist_avg = cos_dist_sum / count
+        mae_avg = mae_sum / count
+        collinearity_loss_avg = collinearity_loss_sum / count
+        bracket_mae_avg = bracket_mae_sum / count
+        incisal_mae_avg = incisal_mae_sum / count
+        outer_mae_avg = outer_mae_sum / count
+        bracket_cos_dist_avg = bracket_cos_dist_sum / count
+        incisal_cos_dist_avg = incisal_cos_dist_sum / count
+        outer_cos_dist_avg = outer_cos_dist_sum / count
         
         self.trainer.logger.info(f"Loss: {loss_avg:.6f}")
-        self.trainer.logger.info(f"Metric: (mean) Cosine Similarity {cos_sim_avg:.6f}")
-        self.trainer.logger.info(f"Metric: (mean) Mean Squared Error {mse_avg:.6f}")
+        self.trainer.logger.info(f"MAE: {mae_avg:.6f}")
+        self.trainer.logger.info(f"Bracket MAE: {bracket_mae_avg:.6f}")
+        self.trainer.logger.info(f"Incisal MAE: {incisal_mae_avg:.6f}")
+        self.trainer.logger.info(f"Outer MAE: {outer_mae_avg:.6f}")
+        self.trainer.logger.info(f"Cosine Distance: {cos_dist_avg:.6f}")
+        self.trainer.logger.info(f"Bracket Cosine Distance: {bracket_cos_dist_avg:.6f}")
+        self.trainer.logger.info(f"Incisal Cosine Distance: {incisal_cos_dist_avg:.6f}")
+        self.trainer.logger.info(f"Outer Cosine Distance: {outer_cos_dist_avg:.6f}")
+        self.trainer.logger.info(f"Collinearity Loss: {collinearity_loss_avg:.6f}")
 
         current_epoch = self.trainer.epoch + 1 
         if self.trainer.writer is not None:  
             self.trainer.writer.add_scalar("val/loss", loss_avg, current_epoch)  
-            self.trainer.writer.add_scalar("val/cos_sim", cos_sim_avg, current_epoch)
-            self.trainer.writer.add_scalar("val/mse", mse_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/cos_dist", cos_dist_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/mae", mae_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/collinearity_loss", collinearity_loss_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/bracket_mae", bracket_mae_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/incisal_mae", incisal_mae_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/outer_mae", outer_mae_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/bracket_cos_dist", bracket_cos_dist_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/incisal_cos_dist", incisal_cos_dist_avg, current_epoch)
+            self.trainer.writer.add_scalar("val/outer_cos_dist", outer_cos_dist_avg, current_epoch)
+            
             # Add WandB logging  
             if self.trainer.cfg.enable_wandb:
-                wandb.log(
-                    {  
-                        "Epoch": current_epoch,  
-                        "val/loss": loss_avg,
-                        "val/mse": mse_avg,
-                        "val/cos_sim": cos_sim_avg,
-                    },
-                    step=wandb.run.step, 
-                )  
+                wandb_log_dict = {
+                    "Epoch": current_epoch,  
+                    "val/loss": loss_avg,
+                    "val/mae": mae_avg,
+                    "val/cos_dist": cos_dist_avg,
+                    "val/collinearity_loss": collinearity_loss_avg,
+                    "val/bracket_mae": bracket_mae_avg,
+                    "val/incisal_mae": incisal_mae_avg,
+                    "val/outer_mae": outer_mae_avg,
+                    "val/bracket_cos_dist": bracket_cos_dist_avg,
+                    "val/incisal_cos_dist": incisal_cos_dist_avg,
+                    "val/outer_cos_dist": outer_cos_dist_avg,
+                }
+                
+                wandb.log(wandb_log_dict, step=wandb.run.step)  
           
         # Store NEGATIVE Loss so that "higher is better" logic works  
         self.trainer.comm_info["current_metric_value"] = -loss_avg  
         self.trainer.comm_info["current_metric_name"] = "LOSS"
 
-        self.trainer.logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")  
+        self.trainer.logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")
       
     def after_train(self):
         best_loss = -self.trainer.best_metric_value
@@ -641,8 +695,8 @@ class HeatmapEvaluator(HookBase):
       
     def before_train(self):  
         if self.trainer.writer is not None and self.trainer.cfg.enable_wandb:  
-            wandb.define_metric("val/*", step_metric="Epoch")  
-      
+            wandb.define_metric("val/*", step_metric="Epoch")
+
     def after_epoch(self):  
         if self.trainer.cfg.evaluate:  
             self.eval()  

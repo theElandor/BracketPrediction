@@ -60,15 +60,17 @@ scheduler = dict(
 # -----------------------------  
 # Dataset settings  
 # -----------------------------    
-dataset_type = "BracketMapDataset"    
-data_root = "/work/grana_maxillo/Mlugli/cleaned"  
+dataset_type = "BracketMapDataset"
+data_root = "/work/grana_maxillo/Mlugli/BracketsHeatmaps"
 feat_keys = ["coord"]  
 grid_size = 0.005  
+fold = 6
   
 data = dict(
     train=dict(  
         type=dataset_type,    
-        split="train",  
+        split="train", 
+        fold=fold, 
         debug=False,  
         data_root=data_root,  
         transform=[  
@@ -96,6 +98,7 @@ data = dict(
     val=dict(  
         type=dataset_type,  
         split="val",  
+        fold=fold,
         data_root=data_root,  
         transform=[  
             dict(type="Copy", keys_dict={"segment": "origin_segment"}),  
@@ -118,41 +121,42 @@ data = dict(
     ),  
   
     test=dict(    
-        type="BracketMapDataset",    
-        split="test",    
-        data_root=data_root,    
-        transform=[  
-            dict(type="Copy", keys_dict={"segment": "origin_segment"}),  
-            dict(  
-                type="GridSample",  
+        type="BracketMapDataset",
+        split="test",
+        fold=fold,
+        data_root=data_root,
+        transform=[
+            dict(type="Copy", keys_dict={"segment": "origin_segment"}),
+            dict(
+                type="GridSample",
                 grid_size=0.0025,  # Finer grid for initial downsampling  
-                hash_type="fnv",  
-                mode="train",  
-                return_inverse=True,  
-            ),  
-        ],  
-        test_mode=True,    
-        test_cfg=dict(  
-            voxelize=dict(    
-                type="GridSample",    
-                grid_size=grid_size,  
-                hash_type="fnv",    
-                mode="test",  
-                return_grid_coord=True,    
-            ),    
-            crop=None,  
-            post_transform=[    
-                dict(type="ToTensor"),    
-                dict(type="Collect", keys=("coord", "grid_coord", "index"), feat_keys=feat_keys),    
+                hash_type="fnv",
+                mode="train",
+                return_inverse=True,
+            ),
+        ],
+        test_mode=True,
+        test_cfg=dict(
+            voxelize=dict(
+                type="GridSample",
+                grid_size=grid_size,
+                hash_type="fnv",
+                mode="test",
+                return_grid_coord=True,
+            ),
+            crop=None,
+            post_transform=[
+                dict(type="ToTensor"),
+                dict(type="Collect", keys=("coord", "grid_coord", "index"), feat_keys=feat_keys),
             ],  
             aug_transform=[    
-                [dict(type="RandomRotateTargetAngle", angle=[0], axis="z", p=1)],    
-                [dict(type="RandomRotateTargetAngle", angle=[1/2], axis="z", p=1)],    
-                [dict(type="RandomRotateTargetAngle", angle=[1], axis="z", p=1)],    
-                [dict(type="RandomRotateTargetAngle", angle=[3/2], axis="z", p=1)],    
-            ],    
-        ),    
-    ),   
+                [dict(type="RandomRotateTargetAngle", angle=[0], axis="z", p=1)],
+                [dict(type="RandomRotateTargetAngle", angle=[1/2], axis="z", p=1)],
+                [dict(type="RandomRotateTargetAngle", angle=[1], axis="z", p=1)],
+                [dict(type="RandomRotateTargetAngle", angle=[3/2], axis="z", p=1)],
+            ],
+        ),
+    ),
 )  
    
 # -----------------------------  

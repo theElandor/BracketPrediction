@@ -38,7 +38,6 @@ model = dict(
         cls_mode=True,
     ),
     backbone_out_channels=128,
-    save_predictions = False,
     output_dim=3,
     alpha=0.4, # Trying adding cosine similarity as an extra metric to improve precision
     freeze_backbone=False,
@@ -69,7 +68,6 @@ scheduler = dict(
 dataset_type = "BracketPointDataset"  
 data_root = "/work/grana_maxillo/Mlugli/Brackets"  
 fold = 6 # Fold to use
-debased=False # Use debased data
 feat_keys = ["coord"]
 grid_size = 0.005
 # Custom augmentations are the same as the standard
@@ -78,13 +76,21 @@ grid_size = 0.005
 # together with the coordinates.
 data = dict(
     train=dict(
-        type=dataset_type,  
+        type=dataset_type,
         split="train",
         debug=False,
         data_root=data_root,
         fold=fold,
-        debased=debased,
-        plot=False,
+        oversample={
+            16:2,
+            17:4,
+            26:2,
+            27:2,
+            36:2,
+            37:2,
+            46:2,
+            47:2,
+        },
         transform=[
             dict(
                 type='CustomRandomRotate',
@@ -119,7 +125,6 @@ data = dict(
         split="val",
         data_root=data_root,
         fold=fold,
-        debased=debased,
         transform=[
             dict(
                 type="GridSample",
@@ -138,11 +143,10 @@ data = dict(
         test_mode=False,  
     ),
     # inference
-    test=dict(  
+    test=dict(
         type=dataset_type,
         data_root=data_root,
         fold=fold,
-        debased=debased,
         split="test",
         test_mode=True,
         test_cfg=dict(
@@ -151,7 +155,7 @@ data = dict(
                 grid_size=grid_size,
                 hash_type="fnv", 
                 mode="test",
-                return_grid_coord=True,  
+                return_grid_coord=True,
             ),
             crop=None,
             post_transform=[
@@ -162,9 +166,9 @@ data = dict(
                     feat_keys=feat_keys,
                 ),
             ],
-            aug_transform=[  
-                [dict(type="RandomRotateTargetAngle", angle=[0], axis="z", center=[0, 0, 0], p=1)]  
-            ], 
+            aug_transform=[
+                [dict(type="RandomRotateTargetAngle", angle=[0], axis="z", center=[0, 0, 0], p=1)]
+            ],
         ), 
     ),
 )
