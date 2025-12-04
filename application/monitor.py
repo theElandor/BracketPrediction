@@ -11,9 +11,9 @@ Usage:
         --seg-weight /homes/mlugli/BracketPrediction/application/weights/segmentator_best.pth \
         --bond-config /homes/mlugli/BracketPrediction/application/configs/Pt_regressor_app.py \
         --bond-weight /homes/mlugli/BracketPrediction/application/weights/regressor_best.pth \
-        --check-interval 10
+        --check-interval 10 \
+        --prod
 """
-
 import os
 import sys
 import json
@@ -34,7 +34,8 @@ class ScanMonitor:
         bond_config: Path,
         bond_weight: Path,
         check_interval: int = 10,
-        status_file: str = "processing_status.json"
+        status_file: str = "processing_status.json",
+        no_visuals: bool = False
     ):
         self.data_root = Path(data_root)
         self.seg_config = Path(seg_config)
@@ -43,6 +44,7 @@ class ScanMonitor:
         self.bond_weight = Path(bond_weight)
         self.check_interval = check_interval
         self.status_file = self.data_root / status_file
+        self.no_visuals = no_visuals
         
         # Validate paths
         if not self.data_root.exists():
@@ -144,6 +146,8 @@ class ScanMonitor:
             f"data_folder={patient_dir}",
             f"weight={self.seg_weight}"
         ]
+        if self.no_visuals:
+            cmd.append("--no-visuals")
         
         try:
             env = os.environ.copy()
@@ -184,6 +188,8 @@ class ScanMonitor:
             f"data_folder={patient_dir}",
             f"weight={self.bond_weight}"
         ]
+        if self.no_visuals:
+            cmd.append("--no-visuals")
         
         try:
             env = os.environ.copy()
@@ -350,8 +356,9 @@ def main():
     parser.add_argument("--bond-config",type=str,required=True,help="Path to bond prediction config file")
     parser.add_argument("--bond-weight",type=str,required=True,help="Path to bond prediction model weights")
     parser.add_argument("--check-interval",type=int,default=10,help="Interval in seconds between checks (default: 10)")
-    parser.add_argument("--status-file",type=str,default="processing_status.json",help="Name of status file (default: processing_status.json)")    
-    args = parser.parse_args() 
+    parser.add_argument("--status-file",type=str,default="processing_status.json",help="Name of status file (default: processing_status.json)")
+    parser.add_argument("--prod", action="store_true", help="Run in production mode (no visuals)")
+    args = parser.parse_args()
     monitor = ScanMonitor(
         data_root=args.data_root,
         seg_config=args.seg_config,
@@ -359,7 +366,8 @@ def main():
         bond_config=args.bond_config,
         bond_weight=args.bond_weight,
         check_interval=args.check_interval,
-        status_file=args.status_file
+        status_file=args.status_file,
+        no_visuals=args.prod
     ) 
     monitor.run()
 

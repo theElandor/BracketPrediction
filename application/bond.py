@@ -24,7 +24,7 @@ from pointcept.engines.launch import launch
 
 
 def visualize_tooth_predictions(mesh, bracket_pred, incisal_pred, outer_pred, 
-                                patient_id, fdi, output_dir, tooth_key, teeth_path):
+                                patient_id, fdi, output_dir, tooth_key, teeth_path, visualize: bool = True):
     """
     Creates three 2D views (XY, XZ, YZ) of the mesh with predicted points.
     Projects predictions onto mesh surface using nearest point method. 
@@ -61,7 +61,8 @@ def visualize_tooth_predictions(mesh, bracket_pred, incisal_pred, outer_pred,
         print(f"  ⚠️ Transformation file not found for {tooth_key}, using identity transformation")
     
     # Create figure with 3 subplots for different views
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    if visualize:
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
     
     # Convert predictions to numpy arrays and project onto mesh
     bracket_original = np.array(bracket_pred)
@@ -116,83 +117,85 @@ def visualize_tooth_predictions(mesh, bracket_pred, incisal_pred, outer_pred,
                         },
                     }
                     
-                    # Create plane points
-                    plane_size = 0.5  # smaller
-                    plane_res = 30  # denser
-                    s = np.linspace(-plane_size, plane_size, plane_res)
-                    t = np.linspace(-plane_size, plane_size, plane_res)
-                    ss, tt = np.meshgrid(s, t)
-                    
-                    plane_points = bracket + ss[..., None] * v_io + tt[..., None] * v_perp
-                    plane_points = plane_points.reshape(-1, 3)
+                    if visualize:
+                        # Create plane points
+                        plane_size = 0.5  # smaller
+                        plane_res = 30  # denser
+                        s = np.linspace(-plane_size, plane_size, plane_res)
+                        t = np.linspace(-plane_size, plane_size, plane_res)
+                        ss, tt = np.meshgrid(s, t)
+                        
+                        plane_points = bracket + ss[..., None] * v_io + tt[..., None] * v_perp
+                        plane_points = plane_points.reshape(-1, 3)
 
-                    # Plot the plane on all three views
-                    axes[0].scatter(plane_points[:, 0], plane_points[:, 1], c='gray', s=5, alpha=0.5, label='Plane')
-                    axes[1].scatter(plane_points[:, 0], plane_points[:, 2], c='gray', s=5, alpha=0.5)
-                    axes[2].scatter(plane_points[:, 1], plane_points[:, 2], c='gray', s=5, alpha=0.5)
+                        # Plot the plane on all three views
+                        axes[0].scatter(plane_points[:, 0], plane_points[:, 1], c='gray', s=5, alpha=0.5, label='Plane')
+                        axes[1].scatter(plane_points[:, 0], plane_points[:, 2], c='gray', s=5, alpha=0.5)
+                        axes[2].scatter(plane_points[:, 1], plane_points[:, 2], c='gray', s=5, alpha=0.5)
     
-    # View 1: XY plane (looking down Z-axis)
-    ax = axes[0]
-    ax.scatter(vertices[:, 0], vertices[:, 1], c='lightblue', s=3, alpha=0.3, label='Mesh')
-    ax.scatter(bracket[0], bracket[1], c='orange', s=100, marker='o', 
-              edgecolors='black', linewidths=2, label='Bracket', zorder=5)
-    if incisal is not None:
-        ax.scatter(incisal[0], incisal[1], c='cyan', s=100, marker='s', 
-                  edgecolors='black', linewidths=2, label='Incisal', zorder=5)
-    if outer is not None:
-        ax.scatter(outer[0], outer[1], c='salmon', s=100, marker='^', 
-                  edgecolors='black', linewidths=2, label='Outer', zorder=5)
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_title('XY View (Top)')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_aspect('equal', adjustable='box')
-    
-    # View 2: XZ plane (looking from Y-axis)
-    ax = axes[1]
-    ax.scatter(vertices[:, 0], vertices[:, 2], c='lightblue', s=3, alpha=0.3, label='Mesh')
-    ax.scatter(bracket[0], bracket[2], c='orange', s=100, marker='o', 
-              edgecolors='black', linewidths=2, label='Bracket', zorder=5)
-    if incisal is not None:
-        ax.scatter(incisal[0], incisal[2], c='cyan', s=100, marker='s', 
-                  edgecolors='black', linewidths=2, label='Incisal', zorder=5)
-    if outer is not None:
-        ax.scatter(outer[0], outer[2], c='salmon', s=100, marker='^', 
-                  edgecolors='black', linewidths=2, label='Outer', zorder=5)
-    ax.set_xlabel('X')
-    ax.set_ylabel('Z')
-    ax.set_title('XZ View (Front)')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_aspect('equal', adjustable='box')
-    
-    # View 3: YZ plane (looking from X-axis)
-    ax = axes[2]
-    ax.scatter(vertices[:, 1], vertices[:, 2], c='lightblue', s=3, alpha=0.3, label='Mesh')
-    ax.scatter(bracket[1], bracket[2], c='orange', s=100, marker='o', 
-              edgecolors='black', linewidths=2, label='Bracket', zorder=5)
-    if incisal is not None:
-        ax.scatter(incisal[1], incisal[2], c='cyan', s=100, marker='s', 
-                  edgecolors='black', linewidths=2, label='Incisal', zorder=5)
-    if outer is not None:
-        ax.scatter(outer[1], outer[2], c='salmon', s=100, marker='^', 
-                  edgecolors='black', linewidths=2, label='Outer', zorder=5)
-    ax.set_xlabel('Y')
-    ax.set_ylabel('Z')
-    ax.set_title('YZ View (Side)')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_aspect('equal', adjustable='box')
-    
-    plt.suptitle(f'Patient {patient_id} - Tooth FDI {fdi}', fontsize=14, fontweight='bold')
-    plt.tight_layout()
-    
-    # Save figure
-    output_file = output_dir / f"patient_{patient_id}_FDI_{fdi}.png"
-    plt.savefig(output_file, dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f"  💾 Saved visualization: {output_file}")
+    if visualize:
+        # View 1: XY plane (looking down Z-axis)
+        ax = axes[0]
+        ax.scatter(vertices[:, 0], vertices[:, 1], c='lightblue', s=3, alpha=0.3, label='Mesh')
+        ax.scatter(bracket[0], bracket[1], c='orange', s=100, marker='o', 
+                  edgecolors='black', linewidths=2, label='Bracket', zorder=5)
+        if incisal is not None:
+            ax.scatter(incisal[0], incisal[1], c='cyan', s=100, marker='s', 
+                      edgecolors='black', linewidths=2, label='Incisal', zorder=5)
+        if outer is not None:
+            ax.scatter(outer[0], outer[1], c='salmon', s=100, marker='^', 
+                      edgecolors='black', linewidths=2, label='Outer', zorder=5)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_title('XY View (Top)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal', adjustable='box')
+        
+        # View 2: XZ plane (looking from Y-axis)
+        ax = axes[1]
+        ax.scatter(vertices[:, 0], vertices[:, 2], c='lightblue', s=3, alpha=0.3, label='Mesh')
+        ax.scatter(bracket[0], bracket[2], c='orange', s=100, marker='o', 
+                  edgecolors='black', linewidths=2, label='Bracket', zorder=5)
+        if incisal is not None:
+            ax.scatter(incisal[0], incisal[2], c='cyan', s=100, marker='s', 
+                      edgecolors='black', linewidths=2, label='Incisal', zorder=5)
+        if outer is not None:
+            ax.scatter(outer[0], outer[2], c='salmon', s=100, marker='^', 
+                      edgecolors='black', linewidths=2, label='Outer', zorder=5)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Z')
+        ax.set_title('XZ View (Front)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal', adjustable='box')
+        
+        # View 3: YZ plane (looking from X-axis)
+        ax = axes[2]
+        ax.scatter(vertices[:, 1], vertices[:, 2], c='lightblue', s=3, alpha=0.3, label='Mesh')
+        ax.scatter(bracket[1], bracket[2], c='orange', s=100, marker='o', 
+                  edgecolors='black', linewidths=2, label='Bracket', zorder=5)
+        if incisal is not None:
+            ax.scatter(incisal[1], incisal[2], c='cyan', s=100, marker='s', 
+                      edgecolors='black', linewidths=2, label='Incisal', zorder=5)
+        if outer is not None:
+            ax.scatter(outer[1], outer[2], c='salmon', s=100, marker='^', 
+                      edgecolors='black', linewidths=2, label='Outer', zorder=5)
+        ax.set_xlabel('Y')
+        ax.set_ylabel('Z')
+        ax.set_title('YZ View (Side)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal', adjustable='box')
+        
+        plt.suptitle(f'Patient {patient_id} - Tooth FDI {fdi}', fontsize=14, fontweight='bold')
+        plt.tight_layout()
+        
+        # Save figure
+        output_file = output_dir / f"patient_{patient_id}_FDI_{fdi}.png"
+        plt.savefig(output_file, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"  💾 Saved visualization: {output_file}")
     return json_data
 
 
@@ -367,7 +370,7 @@ def visualize_jaw_with_predictions(data_folder):
     print(f"\n✅ Jaw visualizations complete. Saved to: {viz_dir}")
 
 
-def postprocess_predictions(data_folder):
+def postprocess_predictions(data_folder, visualize: bool = True):
     """
     Post-processes predictions and creates visualizations.
     
@@ -453,7 +456,8 @@ def postprocess_predictions(data_folder):
                 fdi=fdi,
                 output_dir=viz_dir,
                 tooth_key=tooth_key,
-                teeth_path=teeth_path
+                teeth_path=teeth_path,
+                visualize=visualize
             )
             if points_data:
                 all_points_data[tooth_key] = points_data
@@ -474,7 +478,8 @@ def postprocess_predictions(data_folder):
     print(f"\n✅ Post-processing complete. Visualizations saved to: {viz_dir}")
     
     # Create visualizations on original jaw meshes
-    visualize_jaw_with_predictions(data_folder)
+    if visualize:
+        visualize_jaw_with_predictions(data_folder)
 
 
 def main_worker(cfg):
@@ -491,12 +496,14 @@ def main_worker(cfg):
     
     # Extract data_folder from save_path
     data_folder = Path(cfg.save_path).parent
-    postprocess_predictions(data_folder)
+    postprocess_predictions(data_folder, visualize=not cfg.no_visuals)
 
 
 def main():
-    args = default_argument_parser().parse_args()
-    if args.debug == True:
+    parser = default_argument_parser()
+    parser.add_argument("--no-visuals", action="store_true", help="Do not generate visualizations")
+    args = parser.parse_args()
+    if args.debug:
         print("Hello, happy debugging.")
         debugpy.listen(("0.0.0.0", 5681))
         print(">>> Debugger is listening on port 5681. Waiting for client to attach...")
@@ -506,6 +513,7 @@ def main():
     cfg._cfg_dict["data_root"] = str(Path(args.options["data_folder"]) /  "output_seg" / "teeth")
     cfg._cfg_dict["save_path"] = str(Path(args.options["data_folder"]) / "output_reg") 
     cfg._cfg_dict["data"]["test"]["data_root"] = str(Path(args.options["data_folder"]) /  "output_seg" / "teeth")
+    cfg.no_visuals = args.no_visuals
     launch(
         main_worker,
         num_gpus_per_machine=args.num_gpus,

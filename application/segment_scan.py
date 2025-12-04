@@ -107,7 +107,7 @@ def create_segmentation_visualization(mesh, mask, name, output_dir: Path):
     print(f"  Saved visualization: {vis_output_path}")
 
 
-def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path):
+def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, visualize: bool = True):
     """
     Postprocess segmentation results: split by tooth, normalize, and save.
     
@@ -121,7 +121,8 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path):
     # Load mesh and mask
     mesh = pv.read(stl_file)
     mask = np.load(mask_file)
-    create_segmentation_visualization(mesh, mask, stl_file.stem, output_dir) 
+    if visualize:
+        create_segmentation_visualization(mesh, mask, stl_file.stem, output_dir) 
     if len(mask) != len(mesh.points):
         print(f"Warning: Mask length ({len(mask)}) doesn't match points ({len(mesh.points)})")
         return
@@ -205,6 +206,7 @@ def main_worker(cfg):
     
     data_folder = Path(cfg.data_root)
     output_folder = Path(cfg.save_path)
+    visualize = not cfg.no_visuals
     
     # Find STL files in data folder
     stl_files = list(data_folder.glob("*.stl"))
@@ -217,7 +219,7 @@ def main_worker(cfg):
             print(f"Warning: No prediction found for {stl_file.name}, skipping...")
             continue
         
-        postprocess_segmentation(stl_file, mask_file, output_folder)
+        postprocess_segmentation(stl_file, mask_file, output_folder, visualize=visualize)
     
     print("\n" + "="*80)
     print("Postprocessing complete!")
@@ -225,8 +227,11 @@ def main_worker(cfg):
 
 
 def segment_scan():
-    args = default_argument_parser().parse_args()
-    if args.debug == True:
+    parser = default_argument_parser()
+    parser.add_argument("--no-visuals", action="store_true", help="Do not generate visualizations")
+    args = parser.parse_args()
+
+    if args.debug:
         print("Hello, happy debugging.")
         debugpy.listen(("0.0.0.0", 5681))
         print(">>> Debugger is listening on port 5681. Waiting for client to attach...")
@@ -236,6 +241,7 @@ def segment_scan():
     cfg._cfg_dict["data_root"] = args.options["data_folder"]
     cfg._cfg_dict["save_path"] = str(Path(args.options["data_folder"]) / "output_seg") 
     cfg._cfg_dict["data"]["test"]["data_root"] = args.options["data_folder"]
+    cfg.no_visuals = args.no_visuals
     launch(
         main_worker,
         num_gpus_per_machine=args.num_gpus,
