@@ -11,8 +11,7 @@ Usage:
         --seg-weight /homes/mlugli/BracketPrediction/application/weights/segmentator_best.pth \
         --bond-config /homes/mlugli/BracketPrediction/application/configs/Pt_regressor_app.py \
         --bond-weight /homes/mlugli/BracketPrediction/application/weights/regressor_best.pth \
-        --check-interval 10 \
-        --prod
+        --check-interval 10
 """
 import os
 import sys
@@ -23,6 +22,16 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Set, List
+import debugpy
+
+# NOTE: This script requires 'trimesh' and 'numpy'.
+# Install them with: pip install trimesh numpy
+try:
+    import trimesh
+    import numpy as np
+except ImportError:
+    print("Error: 'trimesh' and 'numpy' are required. Please install them using 'pip install trimesh numpy'")
+    sys.exit(1)
 
 
 class ScanMonitor:
@@ -84,14 +93,17 @@ class ScanMonitor:
             print(f"⚠️  Error saving status file: {e}")
     
     def find_patient_directories(self) -> Set[str]:
-        """Find all patient directories that contain STL files."""
+        """Find all patient directories that contain a 'raw_data' subdirectory or STL files."""
         patient_dirs = set()
         
         for item in self.data_root.iterdir():
             if item.is_dir() and item.name != "__pycache__":
-                # Check if directory contains any STL files
-                stl_files = list(item.glob("*.stl"))
-                if stl_files:
+                # A patient dir is one that contains raw data to be processed,
+                # or already processed STL files for the next pipeline steps.
+                has_raw_data = (item / "raw_data").is_dir()
+                has_stl_files = any(item.glob("*.stl"))
+                
+                if has_raw_data or has_stl_files:
                     patient_dirs.add(item.name)
         
         return patient_dirs
@@ -127,10 +139,29 @@ class ScanMonitor:
             "files": files
         }
     
+    def has_new_raw_files(self, patient_dir: Path) -> bool:
+        """Check if there are new, unprocessed files in the raw_data directory."""
+        raw_data_dir = patient_dir / "raw_data"
+        if not raw_data_dir.is_dir():
+            return False
+
+        # Case-insensitive glob for STL files
+        raw_stls = list(raw_data_dir.glob('[sS][tT][eE][mM]_*.[sS][tT][lL]'))
+        for raw_stl in raw_stls:
+            # If the processed file doesn't exist in the parent directory, it's new.
+            if not (patient_dir / raw_stl.name).exists():
+                return True
+        return False
+
     def should_process(self, patient_id: str, patient_dir: Path) -> bool:
-        """Check if patient directory has unprocessed files."""
-        unprocessed = self.get_unprocessed_files(patient_id, patient_dir)
-        return len(unprocessed) > 0
+        """Check if patient directory has new raw files or unprocessed processed files."""
+        # Check 1: Are there new raw files to preprocess?
+        if self.has_new_raw_files(patient_dir):
+            return True
+        
+        # Check 2: Are there processed files waiting for segmentation/bonding?
+        unprocessed_for_pipeline = self.get_unprocessed_files(patient_id, patient_dir)
+        return len(unprocessed_for_pipeline) > 0
     
     def run_segmentation(self, patient_id: str, patient_dir: Path) -> bool:
         """Run segmentation script for patient directory."""
@@ -216,16 +247,93 @@ class ScanMonitor:
                 print("STDERR:", e.stderr)
             return False
     
+    def preprocess_raw_scans(self, patient_id: str, patient_dir: Path) -> (bool, List[str]):
+        """
+        Processes raw scans from the 'raw_data' subdirectory.
+        Applies transformations and saves processed scans to the main patient directory.
+        Returns (success_status, list_of_raw_files_handled).
+        """
+        raw_data_dir = patient_dir / "raw_data"
+        if not raw_data_dir.is_dir():
+            return True, []
+
+        print(f"\n{'='*80}")
+        print(f"🔬 Pre-processing RAW SCANS for patient {patient_id}")
+        print(f"{'='*80}")
+
+        try:
+            # Case-insensitive glob for config file
+            config_files = list(raw_data_dir.glob('[cC][oO][nN][fF][iI][gG]_*.json'))
+            if not config_files:
+                raise StopIteration
+            config_file = config_files[0]
+        except StopIteration:
+            print(f"❌ Pre-processing failed: config_*.json not found in {raw_data_dir}")
+            return False, []
+
+        # Case-insensitive glob for STL files
+        raw_stl_files = list(raw_data_dir.glob('[sS][tT][eE][mM]_*.[sS][tT][lL]'))
+        if not raw_stl_files:
+            print(f"❌ Pre-processing failed: No STEM_*.stl files found in {raw_data_dir}")
+            return False, [config_file.name]
+
+        all_raw_files = [f.name for f in raw_stl_files] + [config_file.name]
+
+        try:
+            with open(config_file, 'r') as f:
+                config_data = json.load(f)
+            # Reshape the flat list of 16 numbers into a 4x4 matrix
+            scan_transform_matrix = np.array(config_data["scanTransformMatrix"]).reshape((4, 4))
+            if scan_transform_matrix.shape != (4, 4):
+                raise ValueError("scanTransformMatrix must be a 4x4 matrix")
+        except (KeyError, ValueError, json.JSONDecodeError) as e:
+            print(f"❌ Pre-processing failed: Error reading transform matrix from {config_file}: {e}")
+            return False, all_raw_files
+
+        for raw_stl_path in raw_stl_files:
+            try:
+                mesh = trimesh.load_mesh(raw_stl_path)
+                mesh.apply_transform(scan_transform_matrix)
+
+                # Common rotations for both upper and lower scans
+                rot_y_180 = trimesh.transformations.rotation_matrix(angle=np.pi, direction=[0, 1, 0])
+                rot_x_90 = trimesh.transformations.rotation_matrix(angle=np.pi / 2, direction=[1, 0, 0])
+                common_rotation = np.dot(rot_x_90, rot_y_180)
+                mesh.apply_transform(common_rotation)
+
+                if "upper" in raw_stl_path.name.lower():
+                    # Additional rotation for the upper scan
+                    rot_y_180_extra = trimesh.transformations.rotation_matrix(angle=np.pi, direction=[0, 1, 0])
+                    mesh.apply_transform(rot_y_180_extra)
+                    output_filename = raw_stl_path.name
+                    print(f"  Applied common rotations + extra 180deg Y-rot to {raw_stl_path.name}")
+
+                elif "lower" in raw_stl_path.name.lower():
+                    output_filename = raw_stl_path.name
+                    print(f"  Applied common rotations to {raw_stl_path.name}")
+                else:
+                    print(f"  ⚠️ Skipping {raw_stl_path.name}: does not contain 'upper' or 'lower'")
+                    continue
+                # Center the mesh using its centroid
+                centroid = mesh.centroid
+                mesh.vertices -= centroid
+                # Save shif to file
+                with open(patient_dir / str("{}_{}.json".format(raw_stl_path.stem, "shift")), "w") as shift_file: 
+                    json.dump({"shift": list(centroid)}, shift_file)
+
+                output_path = patient_dir / output_filename
+                mesh.export(output_path)
+                print(f"  ✅ Saved processed mesh to {output_path}")
+
+            except Exception as e:
+                print(f"❌ Failed to process file {raw_stl_path.name}: {e}")
+                return False, all_raw_files
+
+        return True, all_raw_files
+
     def process_patient(self, patient_id: str, patient_dir: Path):
-        """Process unprocessed files in a patient directory through full pipeline."""
+        """Process a patient through the full pipeline: pre-processing, segmentation, bonding."""
         timestamp = datetime.now().isoformat()
-        
-        # Get unprocessed files
-        unprocessed_files = self.get_unprocessed_files(patient_id, patient_dir)
-        
-        if not unprocessed_files:
-            print(f"  No unprocessed files for {patient_id}")
-            return
         
         # Initialize patient status if not exists
         if patient_id not in self.status:
@@ -234,6 +342,43 @@ class ScanMonitor:
                 "failed_files": [],
                 "processing_history": []
             }
+        
+        # --- Stage 1: Pre-processing from raw_data ---
+        raw_data_dir = patient_dir / "raw_data"
+        if raw_data_dir.is_dir():
+            # Case-insensitive glob for STL files
+            raw_stls = list(raw_data_dir.glob('[sS][tT][eE][mM]_*.[sS][tT][lL]'))
+            needs_preprocessing = False
+            for raw_stl in raw_stls:
+                if not (patient_dir / raw_stl.name).exists():
+                    needs_preprocessing = True
+                    break
+            
+            if needs_preprocessing:
+                preprocess_success, raw_files_handled = self.preprocess_raw_scans(patient_id, patient_dir)
+                
+                if not preprocess_success:
+                    print(f"❌ Pre-processing failed for {patient_id}. Aborting.")
+                    processing_entry = {
+                        "started_at": timestamp,
+                        "files_to_process": raw_files_handled,
+                        "status": "failed",
+                        "failed_at": datetime.now().isoformat(),
+                        "error": "Pre-processing raw scans failed"
+                    }
+                    self.status[patient_id]["processing_history"].append(processing_entry)
+                    self.status[patient_id]["failed_files"].extend(raw_files_handled)
+                    self.status[patient_id]["failed_files"] = list(set(self.status[patient_id]["failed_files"]))
+                    self.save_status()
+                    return
+
+        # --- Stage 2: Segmentation and Bond Prediction ---
+        # Get unprocessed files (e.g., upper.stl, lower.stl that were just created)
+        unprocessed_files = self.get_unprocessed_files(patient_id, patient_dir)
+        
+        if not unprocessed_files:
+            print(f"  No new files for segmentation/bonding for {patient_id}")
+            return
         
         scan_info = self.get_scan_info(unprocessed_files)
         
@@ -317,8 +462,7 @@ class ScanMonitor:
                     patient_dir = self.data_root / patient_id
                     
                     if self.should_process(patient_id, patient_dir):
-                        unprocessed = self.get_unprocessed_files(patient_id, patient_dir)
-                        print(f"  Processing {patient_id}: {len(unprocessed)} new file(s)")
+                        print(f"  Processing {patient_id}: Found new files or tasks.")
                         processed_any = True
                         self.process_patient(patient_id, patient_dir)
                     else:
@@ -357,8 +501,15 @@ def main():
     parser.add_argument("--bond-weight",type=str,required=True,help="Path to bond prediction model weights")
     parser.add_argument("--check-interval",type=int,default=10,help="Interval in seconds between checks (default: 10)")
     parser.add_argument("--status-file",type=str,default="processing_status.json",help="Name of status file (default: processing_status.json)")
-    parser.add_argument("--prod", action="store_true", help="Run in production mode (no visuals)")
+    parser.add_argument("--prod", action="store_true", help="Run in production mode (no visuals)") 
+    parser.add_argument("--debug", action="store_true", help="Wait for debugger to attach")
     args = parser.parse_args()
+    if args.debug:
+        print("Hello, happy debugging.")
+        debugpy.listen(("0.0.0.0", 5681))
+        print(">>> Debugger is listening on port 5681. Waiting for client to attach...")
+        debugpy.wait_for_client()
+        print(">>> Debugger attached. Resuming execution.")
     monitor = ScanMonitor(
         data_root=args.data_root,
         seg_config=args.seg_config,

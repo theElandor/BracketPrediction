@@ -1,0 +1,298 @@
+# Create plane points
+import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
+import json
+import trimesh
+
+def plot_teeth(bracket, incisal, outer, 
+               v_io, v_perp,
+               vertices, 
+               patient_id, fdi,
+               output_dir):
+
+    fig, axes = plt.subplots(1,3,figsize=(18,6))
+    plane_size = 0.5  # smaller
+    plane_res = 30  # denser
+    s = np.linspace(-plane_size, plane_size, plane_res)
+    t = np.linspace(-plane_size, plane_size, plane_res)
+    ss, tt = np.meshgrid(s, t)
+
+    plane_points = bracket + ss[..., None] * v_io + tt[..., None] * v_perp
+    plane_points = plane_points.reshape(-1, 3)
+
+    # Plot the plane on all three views
+    axes[0].scatter(plane_points[:, 0], plane_points[:, 1], c='gray', s=5, alpha=0.5, label='Plane')
+    axes[1].scatter(plane_points[:, 0], plane_points[:, 2], c='gray', s=5, alpha=0.5)
+    axes[2].scatter(plane_points[:, 1], plane_points[:, 2], c='gray', s=5, alpha=0.5)
+    # View 1: XY plane (looking down Z-axis)
+    ax = axes[0]
+    ax.scatter(vertices[:, 0], vertices[:, 1], c='lightblue', s=3, alpha=0.3, label='Mesh')
+    ax.scatter(bracket[0], bracket[1], c='orange', s=100, marker='o', 
+                edgecolors='black', linewidths=2, label='Bracket', zorder=5)
+    if incisal is not None:
+        ax.scatter(incisal[0], incisal[1], c='cyan', s=100, marker='s', 
+                    edgecolors='black', linewidths=2, label='Incisal', zorder=5)
+    if outer is not None:
+        ax.scatter(outer[0], outer[1], c='salmon', s=100, marker='^', 
+                    edgecolors='black', linewidths=2, label='Outer', zorder=5)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_title('XY View (Top)')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_aspect('equal', adjustable='box')
+
+    # View 2: XZ plane (looking from Y-axis)
+    ax = axes[1]
+    ax.scatter(vertices[:, 0], vertices[:, 2], c='lightblue', s=3, alpha=0.3, label='Mesh')
+    ax.scatter(bracket[0], bracket[2], c='orange', s=100, marker='o', 
+                edgecolors='black', linewidths=2, label='Bracket', zorder=5)
+    if incisal is not None:
+        ax.scatter(incisal[0], incisal[2], c='cyan', s=100, marker='s', 
+                    edgecolors='black', linewidths=2, label='Incisal', zorder=5)
+    if outer is not None:
+        ax.scatter(outer[0], outer[2], c='salmon', s=100, marker='^', 
+                    edgecolors='black', linewidths=2, label='Outer', zorder=5)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Z')
+    ax.set_title('XZ View (Front)')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_aspect('equal', adjustable='box')
+
+    # View 3: YZ plane (looking from X-axis)
+    ax = axes[2]
+    ax.scatter(vertices[:, 1], vertices[:, 2], c='lightblue', s=3, alpha=0.3, label='Mesh')
+    ax.scatter(bracket[1], bracket[2], c='orange', s=100, marker='o', 
+                edgecolors='black', linewidths=2, label='Bracket', zorder=5)
+    if incisal is not None:
+        ax.scatter(incisal[1], incisal[2], c='cyan', s=100, marker='s', 
+                    edgecolors='black', linewidths=2, label='Incisal', zorder=5)
+    if outer is not None:
+        ax.scatter(outer[1], outer[2], c='salmon', s=100, marker='^', 
+                    edgecolors='black', linewidths=2, label='Outer', zorder=5)
+    ax.set_xlabel('Y')
+    ax.set_ylabel('Z')
+    ax.set_title('YZ View (Side)')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_aspect('equal', adjustable='box')
+
+    plt.suptitle(f'Patient {patient_id} - Tooth FDI {fdi}', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+
+    # Save figure
+    output_file = output_dir / f"patient_{patient_id}_FDI_{fdi}.png"
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  💾 Saved visualization: {output_file}")
+
+
+def plot_jaw(data_folder, rotated: bool = False):
+    """
+    Unified visualization for jaw predictions.
+
+    If rotated is False:
+      - Loads data_folder/output_reg/results/projected_points.json
+      - Uses jaw meshes from data_folder (files like STEM_lower_0002.stl)
+      - Groups teeth by jaw using tooth_key parsing (same as previous visualize_jaw_with_predictions)
+
+    If rotated is True:
+      - Loads data_folder/output_reg/results/projected_points_rotated.json
+      - Uses raw scans from data_folder/raw_data (e.g. STEM_lower_0002.stl)
+      - Applies scanTransformMatrix from config_<patient>.json to each raw scan before plotting
+      - Groups rotated teeth by jaw based on presence of 'upper'/'lower' in tooth_key (similar to previous visualize_rotated_jaw_with_predictions)
+    """
+    data_folder = Path(data_folder)
+    if rotated:
+        points_file = data_folder / "output_reg" / "results" / "projected_points_rotated.json"
+    else:
+        points_file = data_folder / "output_reg" / "results" / "projected_points.json"
+
+    if not points_file.exists():
+        print(f"⚠️ Points file not found: {points_file}")
+        return
+
+    try:
+        with open(points_file, 'r') as f:
+            all_points = json.load(f)
+    except Exception as e:
+        print(f"⚠️ Error loading points file {points_file}: {e}")
+        return
+
+    print(f"Loaded {'rotated' if rotated else 'original'} predictions for {len(all_points)} teeth")
+
+    # Build jaw groups: mapping jaw_key -> list of (fdi, points_data)
+    jaw_groups = {}
+
+    if not rotated:
+        # previous behavior: parse tooth_key format "STEM_lower_0002_FDI_47"
+        for tooth_key, points_data in all_points.items():
+            parts = tooth_key.split('_')
+            try:
+                jaw_type = 'lower' if 'lower' in parts else 'upper'
+                patient_idx = parts.index(jaw_type)
+                patient_id = parts[patient_idx + 1]
+                fdi_idx = parts.index('FDI')
+                fdi = parts[fdi_idx + 1]
+                jaw_key = f"STEM_{jaw_type}_{patient_id}"
+                jaw_groups.setdefault(jaw_key, []).append((fdi, points_data))
+            except (ValueError, IndexError):
+                print(f"⚠️ Could not parse tooth key: {tooth_key}")
+                continue
+    else:
+        # rotated: group by raw scan files found in raw_data
+        raw_data_dir = data_folder / "raw_data"
+        if not raw_data_dir.exists():
+            print(f"⚠️ raw_data directory not found: {raw_data_dir}")
+            return
+        scan_files = list(raw_data_dir.glob("*.stl"))
+        if not scan_files:
+            print(f"⚠️ No raw scans (.stl) found in {raw_data_dir}")
+            return
+        # For each scan file (jaw), collect teeth whose tooth_key contains 'upper'/'lower' matching this jaw
+        for scan_file in scan_files:
+            jaw_key = scan_file.stem  # e.g. STEM_lower_0002
+            jaw_type = 'lower' if 'lower' in jaw_key else 'upper'
+            jaw_groups[jaw_key] = []
+            for tooth_key, points_data in all_points.items():
+                if jaw_type in tooth_key:
+                    try:
+                        fdi = tooth_key.split('FDI_')[-1]
+                    except Exception:
+                        fdi = 'N/A'
+                    jaw_groups[jaw_key].append((fdi, points_data))
+
+    # Plot each jaw
+    viz_dir = data_folder / "output_reg" / "jaw_plots"
+    viz_dir.mkdir(parents=True, exist_ok=True)
+
+    for jaw_key, teeth_data in jaw_groups.items():
+        if not teeth_data:
+            continue
+
+        # Determine jaw mesh path
+        if rotated:
+            scan_file = data_folder / "raw_data" / f"{jaw_key}.stl"
+            patient_id = data_folder.name
+            config_file = data_folder / "raw_data" / f"config_{patient_id}.json"
+            transform_matrix = np.eye(4)
+            if config_file.exists():
+                try:
+                    with open(config_file, 'r') as f:
+                        cfg = json.load(f)
+                        if 'scanTransformMatrix' in cfg:
+                            transform_matrix = np.array(cfg['scanTransformMatrix']).reshape(4, 4)
+                except Exception as e:
+                    print(f"⚠️ Error loading config {config_file}: {e}")
+            if not scan_file.exists():
+                print(f"⚠️ Jaw mesh not found: {scan_file}")
+                continue
+            try:
+                mesh = trimesh.load_mesh(scan_file)
+                mesh.apply_transform(transform_matrix)
+            except Exception as e:
+                print(f"⚠️ Error loading/applying transform to mesh {scan_file}: {e}")
+                continue
+        else:
+            jaw_mesh_file = data_folder / f"{jaw_key}.stl"
+            if not jaw_mesh_file.exists():
+                print(f"⚠️ Jaw mesh not found: {jaw_mesh_file}")
+                continue
+            try:
+                mesh = trimesh.load_mesh(jaw_mesh_file)
+            except Exception as e:
+                print(f"⚠️ Error loading mesh {jaw_mesh_file}: {e}")
+                continue
+
+        vertices = mesh.vertices
+
+        # Create figure
+        fig, axes = plt.subplots(1, 3, figsize=(24, 8))
+
+        axes[0].scatter(vertices[:, 0], vertices[:, 1], c='lightgray', s=1, alpha=0.3, label='Jaw Mesh')
+        axes[1].scatter(vertices[:, 0], vertices[:, 2], c='lightgray', s=1, alpha=0.3)
+        axes[2].scatter(vertices[:, 1], vertices[:, 2], c='lightgray', s=1, alpha=0.3)
+
+        colors = plt.cm.tab20(np.linspace(0, 1, len(teeth_data)))
+
+        for idx, (fdi, points_data) in enumerate(teeth_data):
+            color = colors[idx]
+            incisal = np.array(points_data.get('incisal', [0, 0, 0]))
+            outer = np.array(points_data.get('outer', [0, 0, 0]))
+            base_plane = points_data.get('basePlane', {})
+            origin = np.array(base_plane.get('origin', [0, 0, 0]))
+            x_axis = np.array(base_plane.get('xAxis', [0, 0, 0]))
+            y_axis = np.array(base_plane.get('yAxis', [0, 0, 0]))
+
+            # Plot points
+            axes[0].scatter(incisal[0], incisal[1], c=[color], s=100, marker='s',
+                          edgecolors='black', linewidths=1.5, label=f'FDI {fdi}', zorder=5)
+            axes[1].scatter(incisal[0], incisal[2], c=[color], s=100, marker='s',
+                          edgecolors='black', linewidths=1.5, zorder=5)
+            axes[2].scatter(incisal[1], incisal[2], c=[color], s=100, marker='s',
+                          edgecolors='black', linewidths=1.5, zorder=5)
+
+            axes[0].scatter(outer[0], outer[1], c=[color], s=100, marker='^',
+                          edgecolors='black', linewidths=1.5, alpha=0.7, zorder=5)
+            axes[1].scatter(outer[0], outer[2], c=[color], s=100, marker='^',
+                          edgecolors='black', linewidths=1.5, alpha=0.7, zorder=5)
+            axes[2].scatter(outer[1], outer[2], c=[color], s=100, marker='^',
+                          edgecolors='black', linewidths=1.5, alpha=0.7, zorder=5)
+
+            axes[0].scatter(origin[0], origin[1], c=[color], s=120, marker='o',
+                          edgecolors='black', linewidths=2, zorder=5)
+            axes[1].scatter(origin[0], origin[2], c=[color], s=120, marker='o',
+                          edgecolors='black', linewidths=2, zorder=5)
+            axes[2].scatter(origin[1], origin[2], c=[color], s=120, marker='o',
+                          edgecolors='black', linewidths=2, zorder=5)
+
+            # plot base plane
+            v_x = x_axis - origin
+            v_y = y_axis - origin
+            if np.linalg.norm(v_x) > 1e-6 and np.linalg.norm(v_y) > 1e-6:
+                v_x = v_x / np.linalg.norm(v_x)
+                v_y = v_y / np.linalg.norm(v_y)
+                plane_size = 2.0
+                plane_res = 20
+                s = np.linspace(-plane_size, plane_size, plane_res)
+                t = np.linspace(-plane_size, plane_size, plane_res)
+                ss, tt = np.meshgrid(s, t)
+                plane_points = origin + ss[..., None] * v_x + tt[..., None] * v_y
+                plane_points = plane_points.reshape(-1, 3)
+                axes[0].scatter(plane_points[:, 0], plane_points[:, 1],
+                              c=[color], s=2, alpha=0.2, zorder=3)
+                axes[1].scatter(plane_points[:, 0], plane_points[:, 2],
+                              c=[color], s=2, alpha=0.2, zorder=3)
+                axes[2].scatter(plane_points[:, 1], plane_points[:, 2],
+                              c=[color], s=2, alpha=0.2, zorder=3)
+
+        # Configure plots
+        axes[0].set_xlabel('X', fontsize=12)
+        axes[0].set_ylabel('Y', fontsize=12)
+        axes[0].set_title('XY View (Top)', fontsize=14, fontweight='bold')
+        axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+        axes[0].grid(True, alpha=0.3)
+        axes[0].set_aspect('equal', adjustable='box')
+
+        axes[1].set_xlabel('X', fontsize=12)
+        axes[1].set_ylabel('Z', fontsize=12)
+        axes[1].set_title('XZ View (Front)', fontsize=14, fontweight='bold')
+        axes[1].grid(True, alpha=0.3)
+        axes[1].set_aspect('equal', adjustable='box')
+
+        axes[2].set_xlabel('Y', fontsize=12)
+        axes[2].set_ylabel('Z', fontsize=12)
+        axes[2].set_title('YZ View (Side)', fontsize=14, fontweight='bold')
+        axes[2].grid(True, alpha=0.3)
+        axes[2].set_aspect('equal', adjustable='box')
+
+        plt.suptitle(f'{"Rotated " if rotated else ""}Predictions - {jaw_key}', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+
+        out_name = f"{jaw_key}_rotated_predictions.png" if rotated else f"{jaw_key}_predictions.png"
+        output_file = viz_dir / out_name
+        plt.savefig(output_file, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"  💾 Saved visualization: {output_file}")
