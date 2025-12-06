@@ -1,10 +1,15 @@
 """
-Modified testing script with postprocessing.
-Command to run:
+This process segments the scan and extracts a mesh for each single tooth.
+It operates on the lower scan in the standard alignment and centered in it's
+center of mass, while the upper scan is also rotated around the Y axis of 180 degrees
+so that tooth 48 is overlapped with lower's tooth 28.
+This rotation will be reversed later to go back to the original reference frame.
+This script is automatically handled by the monitor, but if you want to debug it here's
+the command to run on sample patient "2":
 
 python application/segment_scan.py \
     --config-file /homes/mlugli/BracketPrediction/application/configs/Pt_semseg_app.py \
-    --options data_folder=/homes/mlugli/BracketPrediction/application/data/0002/ \
+    --options data_folder=/homes/mlugli/BracketPrediction/application/data/2/ \
               weight=/homes/mlugli/BracketPrediction/application/weights/segmentator_best.pth
 """
 MAPPING = {

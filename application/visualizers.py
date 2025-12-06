@@ -155,7 +155,6 @@ def plot_jaw(data_folder, raw_scan: bool = False):
                 transform_matrix = np.array(cfg['scanTransformMatrix']).reshape(4, 4)
                 mesh = trimesh.load_mesh(scan_file)
                 mesh.apply_transform(transform_matrix)
-                mesh.export(f'debug_{patient_id}_{jaw_key}.stl')
 
         else:
             jaw_mesh_file = data_folder / f"{jaw_key}.stl"
@@ -164,9 +163,9 @@ def plot_jaw(data_folder, raw_scan: bool = False):
         vertices = mesh.vertices
         # Create figure
         fig, axes = plt.subplots(1, 3, figsize=(24, 8))
-        axes[0].scatter(vertices[:, 0], vertices[:, 1], c='lightgray', s=1, alpha=0.3, label='Jaw Mesh')
-        axes[1].scatter(vertices[:, 0], vertices[:, 2], c='lightgray', s=1, alpha=0.3)
-        axes[2].scatter(vertices[:, 1], vertices[:, 2], c='lightgray', s=1, alpha=0.3)
+        axes[0].scatter(vertices[:, 0], vertices[:, 1], c='lightgray', s=1, alpha=0.7, label='Jaw Mesh')
+        axes[1].scatter(vertices[:, 0], vertices[:, 2], c='lightgray', s=1, alpha=0.7)
+        axes[2].scatter(vertices[:, 1], vertices[:, 2], c='lightgray', s=1, alpha=0.7)
 
         colors = plt.cm.tab20(np.linspace(0, 1, len(teeth_data)))
 
