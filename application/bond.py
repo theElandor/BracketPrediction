@@ -3,7 +3,7 @@ Modified testing script with postprocessing and visualization.
 Command to run:
 python application/bond.py \
     --config-file /homes/mlugli/BracketPrediction/application/configs/Pt_regressor_app.py \
-    --options data_folder=/homes/mlugli/BracketPrediction/application/data/0002/ \
+    --options data_folder=/homes/mlugli/BracketPrediction/application/data/2/ \
               weight=/homes/mlugli/BracketPrediction/application/weights/regressor_best.pth
 """
 
@@ -25,6 +25,51 @@ from matplotlib.lines import Line2D
 
 from visualizers import plot_teeth
 from visualizers import plot_jaw
+
+def write_points_to_ply_with_colors(filename, incisal, outer, origin, xaxis, yaxis, zaxis):
+    """Write points to PLY file with colors to distinguish groups."""
+    
+    # Define colors for each group (RGB, 0-255)
+    colors = {
+        'incisal': [255, 0, 0],      # Red
+        'outer': [0, 255, 0],         # Green
+        'origin': [0, 0, 255],        # Blue
+        'xaxis': [255, 255, 0],       # Yellow
+        'yaxis': [255, 0, 255],       # Magenta
+        'zaxis': [0, 255, 255]        # Cyan
+    }
+    
+    all_points = []
+    all_colors = []
+    
+    for name, point_array in [('incisal', incisal), ('outer', outer), 
+                               ('origin', origin), ('xaxis', xaxis), 
+                               ('yaxis', yaxis), ('zaxis', zaxis)]:
+        if point_array.ndim == 1:
+            point_array = point_array.reshape(1, -1)
+        
+        all_points.append(point_array)
+        # Repeat color for each point in the group
+        all_colors.extend([colors[name]] * len(point_array))
+    
+    points = np.vstack(all_points)
+    colors_array = np.array(all_colors)
+    num_points = points.shape[0]
+    
+    with open(filename, 'w') as f:
+        f.write("ply\n")
+        f.write("format ascii 1.0\n")
+        f.write(f"element vertex {num_points}\n")
+        f.write("property float x\n")
+        f.write("property float y\n")
+        f.write("property float z\n")
+        f.write("property uchar red\n")
+        f.write("property uchar green\n")
+        f.write("property uchar blue\n")
+        f.write("end_header\n")
+        
+        for point, color in zip(points, colors_array):
+            f.write(f"{point[0]} {point[1]} {point[2]} {color[0]} {color[1]} {color[2]}\n")
 
 def process_tooth_predictions(mesh, bracket_pred, incisal_pred, outer_pred, 
                                 patient_id, fdi, output_dir, tooth_key, teeth_path, visualize: bool = True):
@@ -162,6 +207,8 @@ def postprocess_predictions(data_folder, visualize: bool = True):
 
     # Rotated version of points file.
     rotated_points = {}
+    all_incisal, all_outer, all_origin, all_xaxis, all_yaxis, all_zaxis = [], [], [], [], [], []
+    all_incisal_pre, all_outer_pre, all_origin_pre, all_xaxis_pre, all_yaxis_pre, all_zaxis_pre = [], [], [], [], [], []
     for tooth_key, pdata in all_points_data.items():
         # Load shift file before rotation
         shift = np.array([0.0, 0.0, 0.0])
@@ -178,20 +225,23 @@ def postprocess_predictions(data_folder, visualize: bool = True):
                 print(f"  ⚠️ Could not load or parse shift file {shift_file}: {e}")
 
         # Choose rotation sequence based on jaw
-        if 'upper' in tooth_key:
-            seq = [('y', 180), ('x', -90), ('y', 180)]
-        else:
-            seq = [('x', -90), ('y', 180)]
+        seq = [('x', -90), ('y', 180)]
         try:
             # Apply shift to points, then apply rotations using trimesh
             incisal = np.array(pdata['incisal']) + shift
             outer = np.array(pdata['outer']) + shift
-            origin_orig = np.array(pdata.get('basePlane', {}).get('origin', [0, 0, 0]))
-            origin = origin_orig + shift
+            origin = np.array(pdata['basePlane']['origin']) + shift
             xaxis = np.array(pdata['basePlane']['xAxis']) + shift
             yaxis = np.array(pdata['basePlane']['yAxis']) + shift
             zaxis = np.array(pdata['basePlane']['zAxis']) + shift
 
+            all_incisal_pre.append(incisal)
+            all_outer_pre.append(outer)
+            all_origin_pre.append(origin)
+            all_xaxis_pre.append(xaxis)
+            all_yaxis_pre.append(yaxis)
+            all_zaxis_pre.append(zaxis)
+            
             # Apply rotation sequence using trimesh transformations
             for axis, degrees in seq:
                 radians = np.deg2rad(degrees)
@@ -200,7 +250,7 @@ def postprocess_predictions(data_folder, visualize: bool = True):
                 elif axis == 'y':
                     rotation = trimesh.transformations.rotation_matrix(radians, [0, 1, 0])
                 else:
-                    continue
+                    rotation = trimesh.transformations.rotation_matrix(radians, [0, 0, 1])
                 
                 # Apply transformation to points
                 incisal = trimesh.transformations.transform_points([incisal], rotation)[0]
@@ -220,18 +270,50 @@ def postprocess_predictions(data_folder, visualize: bool = True):
                     'zAxis': zaxis.tolist(),
                 }
             }
+            all_incisal.append(incisal)
+            all_outer.append(outer)
+            all_origin.append(origin)
+            all_xaxis.append(xaxis)
+            all_yaxis.append(yaxis)
+            all_zaxis.append(zaxis)
         except Exception as e:
             print(f"⚠️ Error rotating points for {tooth_key}: {e}")
+
+    # Save all points to a single PLY file (pre-rotation)
+    output_ply_path_pre = output_reg_path / "all_keypoints_pre_rotation.ply"
+    write_points_to_ply_with_colors(
+        str(output_ply_path_pre),
+        np.array(all_incisal_pre),
+        np.array(all_outer_pre),
+        np.array(all_origin_pre),
+        np.array(all_xaxis_pre),
+        np.array(all_yaxis_pre),
+        np.array(all_zaxis_pre),
+    )
+    print(f"\n💾 Saved all pre-rotation keypoints to: {output_ply_path_pre}")
+            
+    # Save all points to a single PLY file
+    output_ply_path = output_reg_path / "all_keypoints.ply"
+    write_points_to_ply_with_colors(
+        str(output_ply_path),
+        np.array(all_incisal),
+        np.array(all_outer),
+        np.array(all_origin),
+        np.array(all_xaxis),
+        np.array(all_yaxis),
+        np.array(all_zaxis),
+    )
+    print(f"\n💾 Saved all keypoints to: {output_ply_path}")
+
     rotated_output_path = output_reg_path / "projected_points_rotated.json"
-    with open(rotated_output_path, 'w') as f:
-        json.dump(rotated_points, f, indent=4)
+    with open(rotated_output_path, 'w') as f: json.dump(rotated_points, f, indent=4)
     print(f"\n💾 Saved rotated projected points to: {rotated_output_path}")
     print(f"\n✅ Post-processing complete. Visualizations saved to: {viz_dir}")
     
     # ============= Debug visualizations ==================
     if visualize:
-        plot_jaw(data_folder, rotated=False)
-        plot_jaw(data_folder, rotated=True)
+        plot_jaw(data_folder, raw_scan=False)
+        plot_jaw(data_folder, raw_scan=True)
 
 def main_worker(cfg):
     os.makedirs(cfg.save_path, exist_ok=True)

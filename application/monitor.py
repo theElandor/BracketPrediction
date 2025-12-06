@@ -279,55 +279,44 @@ class ScanMonitor:
 
         all_raw_files = [f.name for f in raw_stl_files] + [config_file.name]
 
-        try:
-            with open(config_file, 'r') as f:
-                config_data = json.load(f)
-            # Reshape the flat list of 16 numbers into a 4x4 matrix
-            scan_transform_matrix = np.array(config_data["scanTransformMatrix"]).reshape((4, 4))
-            if scan_transform_matrix.shape != (4, 4):
-                raise ValueError("scanTransformMatrix must be a 4x4 matrix")
-        except (KeyError, ValueError, json.JSONDecodeError) as e:
-            print(f"❌ Pre-processing failed: Error reading transform matrix from {config_file}: {e}")
-            return False, all_raw_files
-
+        with open(config_file, 'r') as f:
+            config_data = json.load(f)
+        # Reshape the flat list of 16 numbers into a 4x4 matrix
+        scan_transform_matrix = np.array(config_data["scanTransformMatrix"]).reshape((4, 4))
         for raw_stl_path in raw_stl_files:
-            try:
-                mesh = trimesh.load_mesh(raw_stl_path)
-                mesh.apply_transform(scan_transform_matrix)
+            mesh = trimesh.load_mesh(raw_stl_path)
+            # Common rotations for both upper and lower scans
+            rot_y_180 = trimesh.transformations.rotation_matrix(angle=np.pi, direction=[0, 1, 0])
+            rot_x_90 = trimesh.transformations.rotation_matrix(angle=np.pi/2, direction=[1, 0, 0])
+            mesh.apply_transform(scan_transform_matrix)
+            mesh.apply_transform(rot_y_180)
+            mesh.apply_transform(rot_x_90)
 
-                # Common rotations for both upper and lower scans
-                rot_y_180 = trimesh.transformations.rotation_matrix(angle=np.pi, direction=[0, 1, 0])
-                rot_x_90 = trimesh.transformations.rotation_matrix(angle=np.pi / 2, direction=[1, 0, 0])
-                common_rotation = np.dot(rot_x_90, rot_y_180)
-                mesh.apply_transform(common_rotation)
+            if "upper" in raw_stl_path.name.lower():
+                # Additional rotation for the upper scan
+                rot_y_180_extra = trimesh.transformations.rotation_matrix(angle=np.pi, direction=[0, 1, 0])
+                mesh.apply_transform(rot_y_180_extra)
+                output_filename = raw_stl_path.name
+                print(f"  Applied common rotations + extra 180deg Y-rot to {raw_stl_path.name}")
 
-                if "upper" in raw_stl_path.name.lower():
-                    # Additional rotation for the upper scan
-                    rot_y_180_extra = trimesh.transformations.rotation_matrix(angle=np.pi, direction=[0, 1, 0])
-                    mesh.apply_transform(rot_y_180_extra)
-                    output_filename = raw_stl_path.name
-                    print(f"  Applied common rotations + extra 180deg Y-rot to {raw_stl_path.name}")
+            elif "lower" in raw_stl_path.name.lower():
+                output_filename = raw_stl_path.name
+                print(f"  Applied common rotations to {raw_stl_path.name}")
+            else:
+                print(f"  ⚠️ Skipping {raw_stl_path.name}: does not contain 'upper' or 'lower'")
+                continue
 
-                elif "lower" in raw_stl_path.name.lower():
-                    output_filename = raw_stl_path.name
-                    print(f"  Applied common rotations to {raw_stl_path.name}")
-                else:
-                    print(f"  ⚠️ Skipping {raw_stl_path.name}: does not contain 'upper' or 'lower'")
-                    continue
-                # Center the mesh using its centroid
-                centroid = mesh.centroid
-                mesh.vertices -= centroid
-                # Save shif to file
-                with open(patient_dir / str("{}_{}.json".format(raw_stl_path.stem, "shift")), "w") as shift_file: 
-                    json.dump({"shift": list(centroid)}, shift_file)
+            centroid = mesh.centroid
+            translation_matrix = trimesh.transformations.translation_matrix(-centroid)
+            mesh.apply_transform(translation_matrix)
 
-                output_path = patient_dir / output_filename
-                mesh.export(output_path)
-                print(f"  ✅ Saved processed mesh to {output_path}")
+            # Save shif to file
+            with open(patient_dir / str("{}_{}.json".format(raw_stl_path.stem, "shift")), "w") as shift_file: 
+                json.dump({"shift": list(centroid)}, shift_file)
 
-            except Exception as e:
-                print(f"❌ Failed to process file {raw_stl_path.name}: {e}")
-                return False, all_raw_files
+            output_path = patient_dir / output_filename
+            mesh.export(output_path)
+            print(f"  ✅ Saved processed mesh to {output_path}")
 
         return True, all_raw_files
 
@@ -347,30 +336,22 @@ class ScanMonitor:
         raw_data_dir = patient_dir / "raw_data"
         if raw_data_dir.is_dir():
             # Case-insensitive glob for STL files
-            raw_stls = list(raw_data_dir.glob('[sS][tT][eE][mM]_*.[sS][tT][lL]'))
-            needs_preprocessing = False
-            for raw_stl in raw_stls:
-                if not (patient_dir / raw_stl.name).exists():
-                    needs_preprocessing = True
-                    break
-            
-            if needs_preprocessing:
-                preprocess_success, raw_files_handled = self.preprocess_raw_scans(patient_id, patient_dir)
-                
-                if not preprocess_success:
-                    print(f"❌ Pre-processing failed for {patient_id}. Aborting.")
-                    processing_entry = {
-                        "started_at": timestamp,
-                        "files_to_process": raw_files_handled,
-                        "status": "failed",
-                        "failed_at": datetime.now().isoformat(),
-                        "error": "Pre-processing raw scans failed"
-                    }
-                    self.status[patient_id]["processing_history"].append(processing_entry)
-                    self.status[patient_id]["failed_files"].extend(raw_files_handled)
-                    self.status[patient_id]["failed_files"] = list(set(self.status[patient_id]["failed_files"]))
-                    self.save_status()
-                    return
+            raw_stls = list(raw_data_dir.glob('[sS][tT][eE][mM]_*.[sS][tT][lL]'))            
+            preprocess_success, raw_files_handled = self.preprocess_raw_scans(patient_id, patient_dir) 
+            if not preprocess_success:
+                print(f"❌ Pre-processing failed for {patient_id}. Aborting.")
+                processing_entry = {
+                    "started_at": timestamp,
+                    "files_to_process": raw_files_handled,
+                    "status": "failed",
+                    "failed_at": datetime.now().isoformat(),
+                    "error": "Pre-processing raw scans failed"
+                }
+                self.status[patient_id]["processing_history"].append(processing_entry)
+                self.status[patient_id]["failed_files"].extend(raw_files_handled)
+                self.status[patient_id]["failed_files"] = list(set(self.status[patient_id]["failed_files"]))
+                self.save_status()
+                return
 
         # --- Stage 2: Segmentation and Bond Prediction ---
         # Get unprocessed files (e.g., upper.stl, lower.stl that were just created)
