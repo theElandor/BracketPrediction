@@ -174,7 +174,7 @@ def postprocess_predictions(data_folder, visualize: bool = True):
         shift = np.array([0.0, 0.0, 0.0])
         jaw_type = 'lower' if 'lower' in tooth_key else 'upper'
         shift_file_name = f"STEM_{jaw_type}_{patient_id}_shift.json"
-        shift_file = data_folder.parent / f"{patient_id}" / shift_file_name
+        shift_file = data_folder / shift_file_name  # Simplified: shift file is in data_folder
 
         if shift_file.exists():
             try:
@@ -183,7 +183,7 @@ def postprocess_predictions(data_folder, visualize: bool = True):
                     shift = np.array(shift_data.get('shift', [0.0, 0.0, 0.0]))
             except Exception as e:
                 print(f"  ⚠️ Could not load or parse shift file {shift_file}: {e}")
-
+        
         # Choose rotation sequence based on jaw
         if jaw_type == 'lower':
             seq = [('x', -90), ('y', 180)]

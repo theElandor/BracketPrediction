@@ -5,6 +5,7 @@ __pycache__
 **/dist/
 *.so
 pointcept-brackets-venv
+venv
 log
 exp
 weights

@@ -31,7 +31,7 @@ done
 
 CUDA_VERSION_NO_DOT=`echo ${CUDA_VERSION} | tr -d "."`
 BASE_TORCH_TAG=${TORCH_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-devel
-IMG_TAG=pointcept/pointcept:v1.6.0-pytorch${BASE_TORCH_TAG}
+IMG_TAG=autobond:latest
 
 echo "TORCH VERSION: ${TORCH_VERSION}"
 echo "CUDA VERSION: ${CUDA_VERSION}"
@@ -65,11 +65,17 @@ RUN pip install git+https://github.com/octree-nn/ocnn-pytorch.git
 RUN pip install ftfy regex tqdm
 RUN pip install git+https://github.com/openai/CLIP.git
 
-# Build swin3d
-RUN TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" pip install -U git+https://github.com/microsoft/Swin3D.git -v
+#================ CUSTOM ==================
+COPY . /workspace
+WORKDIR /workspace
+RUN pip install -r requirements.txt
+#==========================================
+#
+# Build swin3d (commented out, gives error)
+# RUN TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" pip install -U git+https://github.com/microsoft/Swin3D.git -v
 
-# Build FlashAttention2
-RUN TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" pip install git+https://github.com/Dao-AILab/flash-attention.git
+# Build FlashAttention2 (commented out, gives error)
+# RUN TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" pip install git+https://github.com/Dao-AILab/flash-attention.git
 
 # Build pointops
 RUN git clone https://github.com/Pointcept/Pointcept.git
@@ -77,7 +83,6 @@ RUN TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" pip install Pointcept/libs/pointops -
 
 # Build pointgroup_ops
 RUN TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0" pip install Pointcept/libs/pointgroup_ops -v
-
 EOM
 
 docker build . -f ./Dockerfile -t $IMG_TAG

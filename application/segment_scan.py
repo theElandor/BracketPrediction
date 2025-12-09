@@ -12,6 +12,8 @@ python application/segment_scan.py \
     --options data_folder=/homes/mlugli/BracketPrediction/application/data/2/ \
               weight=/homes/mlugli/BracketPrediction/application/weights/segmentator_best.pth
 """
+import os
+
 MAPPING = {
     1: 48, 2: 47, 3: 46,
     4: 45, 5: 44, 6: 43,
@@ -34,7 +36,6 @@ import pyvista as pv
 import json
 import matplotlib.pyplot as plt
 from matplotlib import cm
-import os
 
 
 def normalize(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
