@@ -5,6 +5,7 @@ services:
     container_name: autobonding-monitor
     gpus:
       - device: 0
+    shm_size: "8gb"
     volumes:
       - ./application/data:/workspace/application/data
     environment:
