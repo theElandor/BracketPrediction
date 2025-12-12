@@ -55,7 +55,6 @@ def normalize(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
 def create_segmentation_visualization(mesh, mask, name, output_dir: Path):
     """
     Create a visualization of the segmented dental arch from 3 viewpoints.
-    
     Args:
         stl_file: Path to original STL file
         mask_file: Path to predicted segmentation mask (.npy)
@@ -70,14 +69,19 @@ def create_segmentation_visualization(mesh, mask, name, output_dir: Path):
     unique_fdi = np.unique(mask)
     cmap = cm.get_cmap('tab20')
     
-    # Create color array for vertices
+    # Create color array for vertices and store color mapping for legend
     colors = np.zeros((len(mask), 3))
+    color_map = {}  # Store FDI -> color mapping
+    
     for i, fdi_val in enumerate(unique_fdi):
         if fdi_val == 0:  # Gum - use gray
-            colors[mask == fdi_val] = [0.7, 0.7, 0.7]
+            color = [0.7, 0.7, 0.7]
+            colors[mask == fdi_val] = color
+            color_map[fdi_val] = color
         else:
             rgb = cmap((i % 20) / 20.0)[:3]
             colors[mask == fdi_val] = rgb
+            color_map[fdi_val] = rgb
     
     mesh['colors'] = colors
     
@@ -99,13 +103,23 @@ def create_segmentation_visualization(mesh, mask, name, output_dir: Path):
         plotter.camera.zoom(1.3)
         img = plotter.screenshot(return_img=True)
         plotter.close()
+        
         ax = fig.add_subplot(1, 3, idx + 1)
         ax.imshow(img)
         ax.axis('off')
         ax.set_title(vp['title'], fontsize=14, fontweight='bold')
     
+    # Add single legend to the figure
+    from matplotlib.patches import Patch
+    legend_elements = [Patch(facecolor=color_map[fdi], label=str(int(fdi))) 
+                       for fdi in sorted(unique_fdi)]
+    
+    fig.legend(handles=legend_elements, loc='lower center', ncol=len(unique_fdi), 
+               fontsize=10, frameon=True, bbox_to_anchor=(0.5, -0.05))
+    
     plt.suptitle(f'Segmentation: {name}', fontsize=16, fontweight='bold')
     plt.tight_layout()
+    
     vis_output_path = output_dir / f"{name}_segmentation_views.png"
     plt.savefig(vis_output_path, dpi=150, bbox_inches='tight')
     plt.close()
@@ -154,17 +168,12 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
         # Get points belonging to this tooth
         class_mask = mask == fdi_index
         class_indices = np.where(class_mask)[0]
-        
         if len(class_indices) == 0:
             continue
         
-        # Extract points for this class
         class_points = points[class_mask]
-        
-        # Normalize points
         normalized_class_points, translation, scale = normalize(class_points)
         
-        # Find faces that have all vertices in this class
         face_mask = np.all(np.isin(faces, class_indices), axis=1)
         class_faces_old_idx = faces[face_mask]
         
@@ -174,15 +183,19 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
         
         # Create PyVista mesh for this tooth
         # Faces need to be in format: [3, v0, v1, v2, 3, v3, v4, v5, ...]
-        faces_pv = np.hstack([[3] + list(face) for face in class_faces])
-        tooth_mesh = pv.PolyData(normalized_class_points, faces_pv)
+        try:
+            faces_pv = np.hstack([[3] + list(face) for face in class_faces])
+            tooth_mesh = pv.PolyData(normalized_class_points, faces_pv)
+        except:
+            print(f"⚠️ Malformed tooth mesh for class {fdi_index}")
+
  
         # Save STL file
         if "lower" in base_name: fdi_index = MAPPING[fdi_index]
         if "upper" in base_name: fdi_index = MAPPING[fdi_index]-20
         stl_output_path = stl_output_dir / f"{base_name}_FDI_{fdi_index}.stl"
         tooth_mesh.save(stl_output_path)
-        
+ 
         # Save normalization parameters to JSON
         json_output_path = json_output_dir / f"{base_name}_FDI_{fdi_index}.json"
         json_data = {

@@ -69,7 +69,11 @@ def process_tooth_predictions(mesh, bracket_pred, incisal_pred, outer_pred,
     face_ids = []
     projected_points = []
     for pred in predictions:
-        closest_points, distance, faces = mesh.nearest.on_surface([np.array(pred)])
+        try:
+            closest_points, distance, faces = mesh.nearest.on_surface([np.array(pred)])
+        except:
+            print(f"⚠️ Projection on mesh failed for tooth {fdi}")
+            return None
         face_ids.append(faces)
         projected_points.append(closest_points[0])
     bracket, incisal, outer = projected_points
@@ -160,7 +164,8 @@ def postprocess_predictions(data_folder, visualize: bool = True):
             teeth_path=teeth_path,
             visualize=visualize
         )
-        all_points_data[tooth_key] = points_data
+        if points_data:
+            all_points_data[tooth_key] = points_data
 
     # Save all points to a single JSON file
     output_json_path = output_reg_path / "projected_points.json"
