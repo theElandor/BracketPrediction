@@ -102,9 +102,9 @@ class ScanMonitor:
         return {}
 
     def update_segmentation_status(self, job_id, status):
-        url = f"http://web:8000/api/update/{job_id}/{status}/"
+        url = f"https://autobonding.ing.unimore.it/api/update/{job_id}/{status}/"
         print("Calling:", url)
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=5, headers={'Authorization': 'Bearer {}'.format(os.getenv("API_TOKEN"))})
         response.raise_for_status()
         return response.json()
 
