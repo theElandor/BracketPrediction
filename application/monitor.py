@@ -28,6 +28,7 @@ from datetime import datetime
 from typing import Dict, Set, List
 from preprocessor import Preprocessor
 import debugpy
+import requests
 
 # NOTE: This script requires 'trimesh' and 'numpy'.
 # Install them with: pip install trimesh numpy
@@ -38,6 +39,10 @@ except ImportError:
     print("Error: 'trimesh' and 'numpy' are required. Please install them using 'pip install trimesh numpy'")
     sys.exit(1)
 
+PENDING = 0
+PROCESSING = 1
+COMPLETED = 2
+FAILED = 3
 
 class ScanMonitor:
     def __init__(
@@ -95,7 +100,14 @@ class ScanMonitor:
                 # fallback to old status if a missedit happens (manual for exaxmple)
                 if self.status: return self.status
         return {}
-    
+
+    def update_segmentation_status(self, job_id, status):
+        url = f"https://autobonding.ing.unimore.it/api/update/{job_id}/{status}/"
+        print("Calling:", url)
+        response = requests.get(url, timeout=5, headers={'Authorization': 'Bearer {}'.format(os.getenv("API_TOKEN"))})
+        response.raise_for_status()
+        return response.json()
+
     def save_status(self):
         """Save processing status to JSON file."""
         try:
@@ -323,6 +335,7 @@ class ScanMonitor:
         seg_success = self.run_segmentation(patient_id, patient_dir)
         
         if not seg_success:
+            self.update_segmentation_status(patient_dir.name, 3)
             processing_entry["status"] = "failed"
             processing_entry["failed_at"] = datetime.now().isoformat()
             processing_entry["error"] = "Segmentation failed"
@@ -337,6 +350,7 @@ class ScanMonitor:
         bond_success = self.run_bond_prediction(patient_id, patient_dir)
         
         if not bond_success:
+            self.update_segmentation_status(patient_dir.name, 3)
             processing_entry["status"] = "failed"
             processing_entry["failed_at"] = datetime.now().isoformat()
             processing_entry["error"] = "Bond prediction failed"
@@ -348,6 +362,7 @@ class ScanMonitor:
             return
         
         # Mark files as successfully processed
+        self.update_segmentation_status(patient_dir.name, 2)
         processing_entry["status"] = "completed"
         processing_entry["completed_at"] = datetime.now().isoformat()
         self.status[patient_id]["processing_history"].append(processing_entry)
@@ -387,6 +402,7 @@ class ScanMonitor:
                     if self.should_process(patient_id, patient_dir):
                         print(f"  Processing {patient_id}: Found new files or tasks.")
                         processed_any = True
+                        self.update_segmentation_status(patient_dir.name, 1)
                         self.process_patient(patient_id, patient_dir)
                     else:
                         if patient_id in self.status:
