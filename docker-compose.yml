@@ -5,10 +5,12 @@ services:
     container_name: autobonding-monitor
     gpus:
       - device: 0
+    shm_size: "8gb"
     volumes:
       - ./application/data:/workspace/application/data
+      - ./run_monitor.sh:/workspace/run_monitor.sh  # Mount the script
     environment:
       - PYTHONPATH=/workspace
       - DISPLAY=:99
-    command: >
-      bash -c "cd /workspace && source /opt/conda/etc/profile.d/conda.sh && conda activate base && python application/monitor.py --data-root /workspace/application/data/ --seg-config /workspace/application/configs/Pt_semseg_app.py --seg-weight /workspace/application/weights/segmentator_best.pth --bond-config /workspace/application/configs/Pt_regressor_app.py --bond-weight /workspace/application/weights/regressor_best.pth --check-interval 10"
+      - API_TOKEN=${API_TOKEN}
+    command: bash /workspace/run_monitor.sh
