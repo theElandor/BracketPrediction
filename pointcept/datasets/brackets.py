@@ -128,7 +128,7 @@ class BracketPointDataset(DefaultDataset):
             incisal_2 = np.array(data['incisal_2'], dtype=np.float32)
             incisal = (incisal_1 + incisal_2) / 2.0
         elif 'incisal' in data:
-            incisal = np.zeros(data['incisal'], dtype=np.float32)
+            incisal = np.array(data['incisal'], dtype=np.float32)
         
         # Handle outer point
         outer = np.array((3,), dtype=np.float32)
@@ -138,7 +138,7 @@ class BracketPointDataset(DefaultDataset):
             outer_2 = np.array(data['outer_2'], dtype=np.float32)
             outer = (outer_1 + outer_2) / 2.0
         elif 'outer' in data:
-            outer = np.zeros(data['outer'], dtype=np.float32)
+            outer = np.array(data['outer'], dtype=np.float32)
         
         return bracket_point, incisal, outer
     
