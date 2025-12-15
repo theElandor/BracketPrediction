@@ -41,8 +41,7 @@ model = dict(
     backbone_out_channels=512,
     output_dim=3,
     # testing weights
-    mae_weight = 1,
-    col_weight = 0
+    mae_weight = 1
 )
 # -----------------------------
 # Optimizer & Scheduler
@@ -81,17 +80,11 @@ data = dict(
         data_root=data_root,
         fold=fold,
         transform=[
-            dict(
-                type='CustomRandomRotate',
-                angle=[-0.05, 0.05],
-                center=[0, 0, 0],
-                axis='z',
-                p=0.5),
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='z', p=0.5),
             dict(type='CustomRandomScale', scale=[0.9, 1.1]),
-            dict(type='CustomRandomFlip', p=0.5),
+            #dict(type='CustomRandomFlip', p=0.5),
             dict(
                 type='CustomRandomShift',
                 shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
@@ -132,7 +125,7 @@ data = dict(
         ],
         test_mode=False,  
     ),
-    # inference
+
     test=dict(
         type=dataset_type,
         data_root=data_root,

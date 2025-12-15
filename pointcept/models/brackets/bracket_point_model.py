@@ -30,7 +30,6 @@ class VoxelBracketPredictor(nn.Module):
         class_embedding=False,
         output_dir:str = "output",
         mae_weight = 1.0,  # Weight for MSE loss
-        col_weight = 0  # Weight for collinearity loss
     ):  
         super().__init__()  
           
@@ -40,7 +39,6 @@ class VoxelBracketPredictor(nn.Module):
 
         # ========= loss weights =============
         self.mae_weight = mae_weight
-        self.col_weight = col_weight
 
         self.num_classes = 8 # FDI index % 10
         self.tooth_embedding_dim = 128
@@ -87,31 +85,6 @@ class VoxelBracketPredictor(nn.Module):
             nn.Dropout(p=0.3),
             nn.Linear(128, output_dim),  # 3 coordinates
         )
-        
-    def _compute_collinearity_loss(self, pt1: torch.Tensor, pt2: torch.Tensor, pt3: torch.Tensor) -> torch.Tensor:
-        """
-        Compute collinearity loss for 3 points.
-        Uses the distance from pt2 to the line defined by pt1 and pt3.
-        
-        Args:
-            pt1, pt2, pt3 (torch.Tensor): Points of shape [B, 3]
-            
-        Returns:
-            torch.Tensor: Scalar collinearity loss
-        """
-        v13 = pt3 - pt1  # [B, 3]
-        v12 = pt2 - pt1  # [B, 3]
-     
-        # Cross product: v13 x v12 (perpendicular to the line through pt1 and pt3)
-        cross = torch.cross(v13, v12, dim=1)  # [B, 3]
-     
-        # Distance from pt2 to the line = ||cross|| / ||v13||
-        cross_norm = torch.norm(cross, dim=1)  # [B]
-        line_norm = torch.norm(v13, dim=1)  # [B]
-
-        distance = cross_norm / (line_norm + 1e-6)  # [B] 
-        # Return mean distance as loss
-        return distance.mean()
  
     def _save(self, input_dict: dict, bracket_point_pred: torch.Tensor) -> None:
         """
@@ -196,11 +169,7 @@ class VoxelBracketPredictor(nn.Module):
             out = {"bracket_point_pred": prediction}  # Add predictions to output (keep as [B, 9])
         else:
             out = {}
-        
-        # Compute collinearity loss (always computed)
-        collinearity_loss = self._compute_collinearity_loss(incisal_pred, bracket_pred, outer_pred)
-        out["collinearity_loss"] = collinearity_loss
-        
+         
         # Compute MAE loss if ground truth available
         if "bracket" in input_dict:
             bracket_target = input_dict["bracket"].view_as(bracket_pred)
@@ -231,8 +200,7 @@ class VoxelBracketPredictor(nn.Module):
             
             out["mae"] = mae
             out["cos_dist"] = cos_dist
-            out["loss"] = (self.mae_weight * mae + 
-                          self.col_weight * collinearity_loss)
+            out["loss"] = (self.mae_weight * mae)
  
         return out
 

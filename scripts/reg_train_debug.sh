@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=Pt_debug_BS4_fixed
+#SBATCH --job-name=Pt_reg_dilated_1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
@@ -7,8 +7,8 @@
 #SBATCH --account=grana_maxillo
 #SBATCH --partition=all_serial
 #SBATCH --nodelist=ailb-login-03
-#SBATCH --time=02:00:00
-#SBATCH --mem=25GB
+#SBATCH --time=03:00:00
+#SBATCH --mem=50GB
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
 
@@ -24,7 +24,7 @@ export PYTHONPATH=./
 
 # Configuration
 CONFIG="configs/brackets/Pt_regressor.py"
-EXP_NAME="Pt_debug_BS4_fixed"
+EXP_NAME="Pt_reg_dilated_1"
 NUM_GPU=1
 
 # Training command
