@@ -101,10 +101,24 @@ class ScanMonitor:
                 if self.status: return self.status
         return {}
 
-    def update_segmentation_status(self, job_id, status):
-        url = f"https://autobonding.ing.unimore.it/api/update/{job_id}/{status}/"
+    def update_status(self, job_id: str, status: int, message: str="placeholder"):
+        url = f"https://autobonding.ing.unimore.it/api/update/{job_id}/"
         print("Calling:", url)
-        response = requests.get(url, timeout=5, headers={'Authorization': 'Bearer {}'.format(os.getenv("API_TOKEN"))})
+        payload = {
+            "status": status,
+            "logs": message
+        }
+        headers = {
+            "Authorization": f"Bearer {os.getenv('API_TOKEN')}",
+            "Content-Type": "application/json"
+        }
+        response = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=5
+        )
+
         response.raise_for_status()
         return response.json()
 
@@ -187,7 +201,7 @@ class ScanMonitor:
         unprocessed_for_pipeline = self.get_unprocessed_files(patient_id, patient_dir)
         return len(unprocessed_for_pipeline) > 0
     
-    def run_segmentation(self, patient_id: str, patient_dir: Path) -> bool:
+    def run_segmentation(self, patient_id: str, patient_dir: Path) -> tuple[bool, str]:
         """Run segmentation script for patient directory."""
         print(f"\n{'='*80}")
         print(f"🦷 Running SEGMENTATION for patient {patient_id}")
@@ -220,8 +234,10 @@ class ScanMonitor:
             print(result.stdout)
             if result.stderr:
                 print("STDERR:", result.stderr)
-            print(f"✅ Segmentation completed for {patient_id}")
-            return True
+            message = f"✅ Segmentation completed for {patient_id}"
+            print(message)
+            return True, message
+
         except subprocess.CalledProcessError as e:
             print(f"❌ Segmentation failed for {patient_id}")
             print(f"   Error: {e}")
@@ -229,9 +245,9 @@ class ScanMonitor:
                 print("STDOUT:", e.stdout)
             if e.stderr:
                 print("STDERR:", e.stderr)
-            return False
+            return False, str(e.stderr)
     
-    def run_bond_prediction(self, patient_id: str, patient_dir: Path) -> bool:
+    def run_bond_prediction(self, patient_id: str, patient_dir: Path) -> tuple[bool, str]:
         """Run bond prediction script for patient directory."""
         print(f"\n{'='*80}")
         print(f"📍 Running BOND PREDICTION for patient {patient_id}")
@@ -262,8 +278,10 @@ class ScanMonitor:
             print(result.stdout)
             if result.stderr:
                 print("STDERR:", result.stderr)
-            print(f"✅ Bond prediction completed for {patient_id}")
-            return True
+            message = f"✅ Bond prediction completed for {patient_id}"
+            print(message)
+            return True, message
+
         except subprocess.CalledProcessError as e:
             print(f"❌ Bond prediction failed for {patient_id}")
             print(f"   Error: {e}")
@@ -271,7 +289,7 @@ class ScanMonitor:
                 print("STDOUT:", e.stdout)
             if e.stderr:
                 print("STDERR:", e.stderr)
-            return False
+            return False, str(e.stderr)
     
     def process_patient(self, patient_id: str, patient_dir: Path):
         """Process a patient through the full pipeline: pre-processing, segmentation, bonding."""
@@ -332,10 +350,10 @@ class ScanMonitor:
         print(f"{'#'*80}")
         
         # Run segmentation
-        seg_success = self.run_segmentation(patient_id, patient_dir)
+        seg_success, message = self.run_segmentation(patient_id, patient_dir)
         
         if not seg_success:
-            self.update_segmentation_status(patient_dir.name, 3)
+            self.update_status(patient_dir.name, 3, message)
             processing_entry["status"] = "failed"
             processing_entry["failed_at"] = datetime.now().isoformat()
             processing_entry["error"] = "Segmentation failed"
@@ -347,10 +365,10 @@ class ScanMonitor:
             return
         
         # Run bond prediction
-        bond_success = self.run_bond_prediction(patient_id, patient_dir)
+        bond_success, message = self.run_bond_prediction(patient_id, patient_dir)
         
         if not bond_success:
-            self.update_segmentation_status(patient_dir.name, 3)
+            self.update_status(patient_dir.name, 3, message)
             processing_entry["status"] = "failed"
             processing_entry["failed_at"] = datetime.now().isoformat()
             processing_entry["error"] = "Bond prediction failed"
@@ -362,7 +380,7 @@ class ScanMonitor:
             return
         
         # Mark files as successfully processed
-        self.update_segmentation_status(patient_dir.name, 2)
+        self.update_status(patient_dir.name, 2, "Processing completed!")
         processing_entry["status"] = "completed"
         processing_entry["completed_at"] = datetime.now().isoformat()
         self.status[patient_id]["processing_history"].append(processing_entry)
@@ -385,36 +403,17 @@ class ScanMonitor:
         try:
             while True:
                 iteration += 1
-                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S") 
-                print(f"\n[{current_time}] Check #{iteration}") 
                 # Find all patient directories
-                print(f"\n[{current_time}] Loading status file...", flush=True)
                 self.status = self.load_status()
                 patient_dirs = self.find_patient_directories() 
-                if not patient_dirs:
-                    print("  No patient directories found")
-                else:
-                    print(f"  Found {len(patient_dirs)} patient directories") 
                 # Process new/unprocessed files
-                processed_any = False
                 for patient_id in sorted(patient_dirs):
                     patient_dir = self.data_root / patient_id 
                     if self.should_process(patient_id, patient_dir):
                         print(f"  Processing {patient_id}: Found new files or tasks.")
-                        processed_any = True
-                        self.update_segmentation_status(patient_dir.name, 1)
+                        self.update_status(patient_dir.name, 1, "Processing")
                         self.process_patient(patient_id, patient_dir)
-                    else:
-                        if patient_id in self.status:
-                            processed_count = len(self.status[patient_id].get("processed_files", []))
-                            failed_count = len(self.status[patient_id].get("failed_files", []))
-                            print(f"  Skipping {patient_id} (processed: {processed_count}, failed: {failed_count})")
-                        else:
-                            print(f"  Skipping {patient_id} (no files)")
-                
-                if not processed_any:
-                    print(f"  No new files to process. Waiting {self.check_interval}s...")
-                
+
                 time.sleep(self.check_interval)
                 
         except KeyboardInterrupt:

@@ -37,7 +37,6 @@ model = dict(
     output_dim=3,
     # testing weights
     mae_weight = 1,
-    col_weight = 0
 )
 # -----------------------------
 # Dataset settings
