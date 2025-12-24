@@ -27,9 +27,8 @@ model = dict(
     type="VoxelBracketPredictor",
     backbone=dict(
         type="PT-v3m1", 
-        in_channels=3,
-        #enc_channels=(16, 32, 48, 64, 128),
-        #enc_num_head=(1, 2, 3, 4, 8),
+        in_channels=4,
+        #in_channels = 3,
         enc_channels=(32, 64, 128, 256, 512),
         enc_num_head=(2, 4, 8, 16, 32),
         dec_channels=(32, 32, 64, 96),
@@ -65,8 +64,10 @@ scheduler = dict(
 # -----------------------------  
 dataset_type = "BracketPointDataset"  
 data_root = "/work/grana_maxillo/Mlugli/Brackets"  
-fold = 6 # Fold to use
-feat_keys = ["coord"]
+fold = 1 # Fold to use
+feat_keys = ["coord", "orientation"]
+#feat_keys = ["coord"]
+index_valid_keys = ["coord", "color", "normal", "superpoint", "strength", "segment", "instance", "orientation"]
 grid_size = 0.005
 # Custom augmentations are the same as the standard
 # pointcept augmentations but they apply the transform
@@ -84,10 +85,17 @@ data = dict(
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='z', p=0.5),
             dict(type='CustomRandomScale', scale=[0.9, 1.1]),
-            #dict(type='CustomRandomFlip', p=0.5),
+            dict(type='CustomRandomFlip', p=0.5),
             dict(
                 type='CustomRandomShift',
                 shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
+            # need to add this so that also the orientation map
+            # is downsampled together with the coordinates during
+            # the grid sample procedure.
+            dict(
+                type="Update",  
+                keys_dict={"index_valid_keys": index_valid_keys}  
+            ),
             dict(
                 type='GridSample',
                 grid_size=grid_size,
@@ -98,17 +106,22 @@ data = dict(
             dict(
                 type='Collect',
                 keys=['coord', 'grid_coord', 'bracket', 'incisal', 'outer', 'name'],
-                feat_keys=feat_keys)
+                feat_keys=feat_keys
+            )
         ],  
         test_mode=False
     ),
  
     val=dict(
         type=dataset_type,
-        split="val",
+        split="test",
         data_root=data_root,
         fold=fold,
         transform=[
+            dict(
+                type="Update",  
+                keys_dict={"index_valid_keys": index_valid_keys}  
+            ),
             dict(
                 type="GridSample",
                 grid_size=grid_size,
@@ -132,6 +145,12 @@ data = dict(
         fold=fold,
         split="test",
         test_mode=True,
+        transform = [
+            dict(
+                type="Update",  
+                keys_dict={"index_valid_keys": index_valid_keys}  
+            ),
+        ],
         test_cfg=dict(
             voxelize=dict(
                 type="GridSample",
@@ -164,7 +183,7 @@ data = dict(
 # computes the loss of the regression task.
 # -----------------------------
 hooks = [
-    dict(type="CheckpointLoader"),  
+    dict(type="CheckpointLoader"),
     dict(type="IterationTimer", warmup_iter=2),  
     dict(type="InformationWriter"),  
     dict(type="DisplacementEvaluator"), 

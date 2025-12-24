@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=Pt_reg_2
+#SBATCH --job-name=Pt_map_normals_2_50e
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --account=grana_maxillo
 #SBATCH --partition=all_usr_prod
-#SBATCH --time=24:00:00
+#SBATCH --time=04:00:00
 #SBATCH --constraint="gpu_RTX5000_16G|gpu_RTX6000_24G|gpu_RTX_A5000_24G"
 #SBATCH --mem=50GB
 #SBATCH --output=logs/train_%j.out
@@ -23,8 +23,8 @@ source /homes/mlugli/BracketPrediction/pointcept-brackets-venv/bin/activate
 export PYTHONPATH=./
 
 # Configuration
-CONFIG="configs/brackets/Pt_regressor.py"
-EXP_NAME="Pt_reg_2"
+CONFIG="configs/brackets/Pt_map_normals.py"
+EXP_NAME="Pt_map_normals_2_50e"
 NUM_GPU=1
 
 # Training command

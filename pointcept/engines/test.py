@@ -10,6 +10,7 @@ from uuid import uuid4
 import os
 import time
 import numpy as np
+from pathlib import Path
 from collections import OrderedDict
 import torch
 import torch.distributed as dist
@@ -1357,73 +1358,6 @@ class InsSegTester(TesterBase):
     def collate_fn(batch):
         # Restrict to bs 1
         return batch[0]
-    
-@TESTERS.register_module()  
-class BracketTester(TesterBase):  
-    def test(self):  
-        assert self.test_loader.batch_size == 1  
-        self.model.eval()  
-        results = []  
-        predictions_dict = {}  # Dictionary to store all predictions  
-        
-        # Create results directory in model folder  
-        save_path = os.path.join(self.cfg.save_path, "results")  
-        os.makedirs(save_path, exist_ok=True)  
-        
-        for idx, data_dict in enumerate(self.test_loader):  
-            data_dict = data_dict[0]  
-            fragment_list = data_dict.pop("fragment_list")  
-            bracket_point_gt = data_dict.pop("bracket")  
-            data_name = data_dict.pop("name")  
-            
-            # Move ground truth to GPU  
-            if isinstance(bracket_point_gt, np.ndarray):  
-                bracket_point_gt = torch.from_numpy(bracket_point_gt).cuda()  
-            elif isinstance(bracket_point_gt, torch.Tensor):  
-                bracket_point_gt = bracket_point_gt.cuda()  
-            
-            pred_sum = torch.zeros(1, 3).cuda()  
-            
-            for fragment in fragment_list:  
-                for key in fragment.keys():  
-                    if isinstance(fragment[key], torch.Tensor):  
-                        fragment[key] = fragment[key].cuda(non_blocking=True)  
-                
-                with torch.no_grad():  
-                    output = self.model(fragment)  
-                    pred_sum += output["bracket_point_pred"]  
-            
-            pred = (pred_sum / len(fragment_list)).squeeze(0).cpu()  
-            
-            # Store prediction in dictionary  
-            predictions_dict[data_name] = pred.numpy().tolist()  
-            
-            # Calculate error  
-            error = torch.norm(pred - bracket_point_gt.cpu()).item()  
-            results.append({"name": data_name, "error": error})  
-            
-            self.logger.info(f"Test: {data_name}, Error: {error:.4f}")  
-        
-        # Save all predictions to single JSON file  
-        predictions_file = os.path.join(save_path, "predictions.json")  
-        with open(predictions_file, "w") as f:  
-            json.dump(predictions_dict, f, indent=4)  
-        
-        # Save summary with errors  
-        summary_file = os.path.join(save_path, "summary.json")  
-        with open(summary_file, "w") as f:  
-            json.dump({  
-                "results": results,  
-                "mean_error": float(np.mean([r["error"] for r in results]))  
-            }, f, indent=4)  
-        
-        mean_error = np.mean([r["error"] for r in results])  
-        self.logger.info(f"Mean Error: {mean_error:.4f}")  
-        self.logger.info(f"Predictions saved to: {predictions_file}")
-      
-    @staticmethod  
-    def collate_fn(batch):  
-        return batch  # Don't collate, just return the list
 
 @TESTERS.register_module()  
 class BracketTester_v2(TesterBase):  
@@ -1565,94 +1499,84 @@ class BracketTester_v2(TesterBase):
 
 
 @TESTERS.register_module()    
-class HeatmapTester(TesterBase):    
-    def test(self):    
+class HeatmapTester(TesterBase):
+    def test(self):
         assert self.test_loader.batch_size == 1    
         logger = get_root_logger()    
         logger.info(">>>>>>>>>>>>>>>> Start Evaluation >>>>>>>>>>>>>>>>")    
-            
-        batch_time = AverageMeter()    
-        mse_meter = AverageMeter()    
-        mae_meter = AverageMeter()    
-        self.model.eval()    
-            
+ 
+        batch_time = AverageMeter()
+        mse_meter = AverageMeter()
+        mae_meter = AverageMeter()
+        self.model.eval()
+ 
         save_path = os.path.join(self.cfg.save_path, "results")    
         heatmap_path = os.path.join(save_path, "heatmaps")    
         make_dirs(save_path)    
         make_dirs(heatmap_path)    
-        
+ 
         # Dictionary to store results in the format: sample_name -> [coord_x, coord_y, coord_z]
         all_results = {}
-            
+        self.channels = ['bracket', 'incisal', 'outer'] 
         for idx, data_dict in enumerate(self.test_loader):    
             start = time.time()    
             data_dict = data_dict[0]    
             fragment_list = data_dict.pop("fragment_list")    
             segment = data_dict.pop("segment")    
-            data_name = data_dict.pop("name")    
-            bracket = data_dict.pop("bracket", None)  # Get bracket point if available
-                
-            pred_save_path = os.path.join(heatmap_path, f"{data_name}_pred.npy")    
-                
-            if os.path.isfile(pred_save_path):    
-                logger.info(    
-                    f"{idx + 1}/{len(self.test_loader)}: {data_name}, loaded existing prediction."    
+            data_name = data_dict.pop("name")
+
+            # bracket = data_dict.pop("bracket")  # Get bracket point if available
+            # incisal = data_dict.pop("incisal")
+            # outer = data_dict.pop("outer")
+    
+            pred_save_path = os.path.join(heatmap_path, f"{data_name}_pred.npy")
+            pred = torch.zeros(segment.shape[0], 3).cuda()    
+
+            for i in range(len(fragment_list)):
+                fragment_batch_size = 1  
+                s_i, e_i = i * fragment_batch_size, min(    
+                    (i + 1) * fragment_batch_size, len(fragment_list)    
                 )    
-                pred = np.load(pred_save_path)    
-                if "origin_segment" in data_dict.keys():    
-                    segment = data_dict["origin_segment"]    
-            else:    
-                pred = torch.zeros(segment.size).cuda()    
+                input_dict = collate_fn(fragment_list[s_i:e_i])    
+                for key in input_dict.keys():    
+                    if isinstance(input_dict[key], torch.Tensor):    
+                        input_dict[key] = input_dict[key].cuda(non_blocking=True)    
                     
-                for i in range(len(fragment_list)):    
-                    fragment_batch_size = 1  
-                    s_i, e_i = i * fragment_batch_size, min(    
-                        (i + 1) * fragment_batch_size, len(fragment_list)    
-                    )    
-                    input_dict = collate_fn(fragment_list[s_i:e_i])    
-                    for key in input_dict.keys():    
-                        if isinstance(input_dict[key], torch.Tensor):    
-                            input_dict[key] = input_dict[key].cuda(non_blocking=True)    
+                idx_part = input_dict["index"]    
+                with torch.no_grad():    
+                    output_dict = self.model(input_dict)    
+                    pred_part = output_dict["seg_logits"]    
+                    if pred_part.dim() > 2:    
+                        pred_part = pred_part.squeeze(-1)    
                         
-                    idx_part = input_dict["index"]    
-                    with torch.no_grad():    
-                        output_dict = self.model(input_dict)    
-                        pred_part = output_dict["seg_logits"]    
-                        if pred_part.dim() > 1:    
-                            pred_part = pred_part.squeeze(-1)    
-                            
-                        if self.cfg.empty_cache:    
-                            torch.cuda.empty_cache()    
-                            
-                        bs = 0    
-                        for be in input_dict["offset"]:  
-                            pred[idx_part[bs:be]] += pred_part[bs:be]    
-                            bs = be    
+                    if self.cfg.empty_cache:    
+                        torch.cuda.empty_cache()    
                         
-                    logger.info(    
-                        f"Test: {idx + 1}/{len(self.test_loader)}-{data_name}, "    
-                        f"Batch: {i}/{len(fragment_list)}"    
-                    )    
-                  
-                # CRITICAL FIX: Average predictions from all TTA fragments  
-                pred = pred / len(fragment_list)  
-                  
-                # Convert to numpy and clamp    
-                pred = pred.cpu().numpy()    
-                pred = np.clip(pred, 0.0, 1.0)    
+                    bs = 0    
+                    for be in input_dict["offset"]:  
+                        pred[idx_part[bs:be]] += pred_part[bs:be]    
+                        bs = be    
                     
-                # Handle inverse mapping    
-                if "origin_segment" in data_dict.keys():    
-                    assert "inverse" in data_dict.keys()    
-                    pred = pred[data_dict["inverse"]]    
-                    segment = data_dict["origin_segment"]    
-                    
-                np.save(pred_save_path, pred)    
+                logger.info(    
+                    f"Test: {idx + 1}/{len(self.test_loader)}-{data_name}, "    
+                    f"Batch: {i}/{len(fragment_list)}"    
+                )    
                 
+            pred = pred / len(fragment_list)  
+            pred = pred.cpu().numpy()    
+            pred = np.clip(pred, 0.0, 1.0) # N x 3
+             
+            # Handle inverse mapping    
+            if "origin_segment" in data_dict.keys():    
+                assert "inverse" in data_dict.keys()    
+                pred = pred[data_dict["inverse"]]    
+                segment = data_dict["origin_segment"]    
+                
+            np.save(pred_save_path, pred)
+            
             # Compute metrics    
             mse = np.mean((pred - segment) ** 2)    
             mae = np.mean(np.abs(pred - segment))    
-                
             mse_meter.update(mse)    
             mae_meter.update(mae)   
                 
@@ -1660,44 +1584,45 @@ class HeatmapTester(TesterBase):
             logger.info(    
                 f"Test: {data_name} [{idx + 1}/{len(self.test_loader)}]-{segment.size} "    
                 f"Batch {batch_time.val:.3f} ({batch_time.avg:.3f}) "    
-                f"MSE {mse:.6f} ({mse_meter.avg:.6f}) "    
+                f"MSE {mse:.6f} ({mse_meter.avg:.6f}) " 
                 f"MAE {mae:.6f} ({mae_meter.avg:.6f})"    
             )    
-            
             # Compute proposal point from top 5% of heatmap values
-            try:
-                full_path = data_dict.get("full_path")
-                if full_path and os.path.exists(full_path):
-                    mesh = trimesh.load(full_path, force="mesh")
-                    verts = np.asarray(mesh.vertices)
-                    
-                    if verts.shape[0] == pred.shape[0]:
-                        # Get top 5% threshold
-                        pct = 100.0 - 5.0
-                        thresh = np.percentile(pred, pct)
-                        mask = pred >= thresh
-                        inds = np.nonzero(mask)[0]
-                        
-                        if inds.size == 0:
-                            # fallback to max
-                            max_idx = int(np.argmax(pred))
-                            proposal = verts[max_idx].astype(np.float64)
-                        else:
-                            weights = pred[inds].astype(np.float64)
-                            wsum = weights.sum()
-                            if wsum == 0:
-                                max_idx = int(np.argmax(pred))
-                                proposal = verts[max_idx].astype(np.float64)
-                            else:
-                                proposal = (verts[inds].astype(np.float64).T @ weights) / wsum
-                        all_results[data_name] = proposal.tolist()
-            except Exception as e:
-                logger.warning(f"Failed to compute proposal for {data_name}: {e}")
-            
+            full_path = data_dict.get("full_path")
+            mesh = trimesh.load(full_path, force="mesh")
+            verts = np.asarray(mesh.vertices)
+            channels_proposals = {}
+            # ============== load orientation map ==================
+            #full_path_p = Path(full_path)
+            #orientation_map_p = full_path_p.with_name(full_path_p.stem + "_orient.npy")
+            #orientation_map = np.load(orientation_map_p)
+            # ======================================================
+            for channel_idx in range(3):
+                channel_pred = pred[:, channel_idx] 
+                #channel_pred = channel_pred * orientation_map
+                thresh = np.percentile(channel_pred, 95)
+                mask = channel_pred >= thresh
+                inds = np.nonzero(mask)[0]
+
+                if inds.size == 0:
+                    # fallback to max
+                    max_idx = int(np.argmax(channel_pred))
+                    proposal = verts[max_idx].astype(np.float64)
+                else:
+                    weights = channel_pred[inds].astype(np.float64)
+                    wsum = weights.sum()
+                    if wsum == 0:
+                        max_idx = int(np.argmax(channel_pred))
+                        proposal = verts[max_idx].astype(np.float64)
+                    else:
+                        proposal = (verts[inds].astype(np.float64).T @ weights) / wsum
+                channels_proposals[self.channels[channel_idx]] = proposal.tolist()
+            all_results[data_name] = channels_proposals
+
         logger.info(    
             f"Val result: MSE/MAE {mse_meter.avg:.6f}/{mae_meter.avg:.6f}"    
         )    
-        
+ 
         # Save all results to JSON file
         results_json_path = os.path.join(save_path, "results.json")
         try:
@@ -1707,8 +1632,8 @@ class HeatmapTester(TesterBase):
         except Exception as e:
             logger.warning(f"Failed to save results JSON: {e}")
         
-        logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")    
-        
+        logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")
+ 
     @staticmethod
-    def collate_fn(batch):  
+    def collate_fn(batch):
         return batch

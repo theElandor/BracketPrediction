@@ -111,6 +111,13 @@ class BracketPointDataset(DefaultDataset):
         except:
             print(f"Couldn't load sample {stl_path}")
             raise
+
+    def _load_orientation_map(self, map_path:str):
+        '''
+        Loads and returns the orientation heatmap.
+        '''
+        orientation_map = np.load(map_path)
+        return np.expand_dims(orientation_map, 1)
     
     def _load_json(self, json_path):
         with open(json_path, 'r') as f:
@@ -146,27 +153,27 @@ class BracketPointDataset(DefaultDataset):
         file_rel_path = self.data_list[idx % len(self.data_list)]  
         stl_path = os.path.join(self.data_root, file_rel_path)  
         json_path = os.path.join(self.data_root, file_rel_path.replace(".stl", ".json"))  
+        orientation_path = os.path.join(self.data_root, file_rel_path.replace(".stl", "")+"_orient.npy")
         
         coord, normal = self._load_stl(stl_path)
         bracket_point, incisal, outer = self._load_json(json_path)
-        assert type(coord) != type(None), f"Sample {stl_path} coordinates not loaded correctly."
-        assert type(normal) != type(None), f"Could not load normal for sample {stl_path}."
-        assert bracket_point.shape == (3,), f"Wrongly shaped bracket point for sample {stl_path}"
+        orientation_map = self._load_orientation_map(orientation_path)
         d = {
-            "coord": coord,  
+            "coord": coord,
             "normal": normal,
+            "orientation": orientation_map,
             "name": Path(stl_path).stem,
             "bracket": bracket_point,
             "incisal": incisal,
             "outer": outer
         }
         return d
-    
+ 
     def prepare_test_data(self, idx):
         data_dict = self.get_data(idx, testing=True)  
         data_dict = self.transform(data_dict)
-        
-        # Extract ground truth bracket_point and segment  
+
+        # Extract ground truth bracket_point
         result_dict = dict(
             bracket =data_dict.pop("bracket"),  # Add this line 
             outer = data_dict.pop("outer"),

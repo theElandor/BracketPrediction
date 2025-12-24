@@ -667,13 +667,13 @@ class HeatmapEvaluator(HookBase):
                 output_dict = self.trainer.model(input_dict)  
               
             # Get predictions and clamp to [0, 1]  
-            heatmap_pred = output_dict["seg_logits"].squeeze(-1)  # Remove last dim if [N, 1]  
+            heatmap_pred = output_dict["seg_logits"]
             heatmap_pred = torch.clamp(heatmap_pred, 0.0, 1.0)  
 
             all_predictions.append(heatmap_pred.cpu()) 
             # Get ground truth  
-            segment = input_dict["segment"]  
-              
+            segment = input_dict["segment"]
+ 
             # Handle inverse mapping if present  
             if "inverse" in input_dict.keys():  
                 assert "origin_segment" in input_dict.keys()  
@@ -704,7 +704,7 @@ class HeatmapEvaluator(HookBase):
                     loss=loss, mse=mse, mae=mae  
                 )  
             )  
-          
+ 
         # Compute averages  
         loss_avg = self.trainer.storage.history("val_loss").avg  
         mse_avg = self.trainer.storage.history("val_mse").avg  

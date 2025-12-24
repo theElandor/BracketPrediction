@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=Pt_reg_dilated_1
+#SBATCH --job-name=Pt_map_1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
@@ -23,9 +23,9 @@ source /homes/mlugli/BracketPrediction/pointcept-brackets-venv/bin/activate
 export PYTHONPATH=./
 
 # Configuration
-CONFIG="configs/brackets/Pt_regressor.py"
-EXP_NAME="Pt_reg_dilated_1"
+CONFIG="configs/brackets/Pt_map.py"
+EXP_NAME="Pt_map_1"
 NUM_GPU=1
 
 # Training command
-python tools/train.py --config-file ${CONFIG} --num-gpus ${NUM_GPU} --options save_path=exp/semseg/${EXP_NAME}
+python tools/train.py --config-file ${CONFIG} --num-gpus ${NUM_GPU} --options save_path=exp/brackets/${EXP_NAME}

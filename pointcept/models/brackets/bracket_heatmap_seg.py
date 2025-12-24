@@ -12,7 +12,7 @@ class HeatmapRegressor(nn.Module):
     ):
         super().__init__()  
         self.backbone = build_model(backbone)  
-        self.regression_head = nn.Linear(backbone_out_channels, 1)  
+        self.regression_head = nn.Linear(backbone_out_channels, 3)  
       
     def forward(self, data_dict):  
         point = self.backbone(data_dict)  
@@ -29,7 +29,7 @@ class HeatmapRegressor(nn.Module):
             feat = point
           
         # Regression output
-        heatmap_pred = self.regression_head(feat).squeeze(-1)
+        heatmap_pred = self.regression_head(feat)
         heatmap_pred = torch.sigmoid(heatmap_pred)  # [0, 1] range
         # for validation also return predictions to compute extra metrics later.
         out = {} if self.training else {"seg_logits": heatmap_pred}

@@ -50,6 +50,7 @@ class BracketMapDataset(DefaultDataset):
             self.aug_transform = [Compose(aug) for aug in test_cfg.aug_transform]
  
     def get_data_list(self):
+
         """Load list of data samples from fold JSON files, with path mapping."""
         fold_file = os.path.join(self.data_root, f"split_{self.fold}.json")
         if not os.path.exists(fold_file):
@@ -98,36 +99,28 @@ class BracketMapDataset(DefaultDataset):
         return file_names
     
     def _load_stl(self, stl_path):
-        try:
-            # Try loading the primary file
-            mesh = trimesh.load(stl_path, force='mesh')
-            points = mesh.vertices
-            normals = mesh.vertex_normals
-            return points.astype(np.float32), normals.astype(np.float32)
-        except:
-            print(f"Couldn't load sample {stl_path}")
-            raise
+
+        mesh = trimesh.load(stl_path, force='mesh')
+        points = mesh.vertices
+        normals = mesh.vertex_normals
+        return points.astype(np.float32), normals.astype(np.float32)
+
    
     def _load_heatmap(self, npy_path):  
         """Load heatmap values from .npy file"""  
-        try:
-            heatmap = np.load(npy_path)  
-            # Ensure it's float32 and 1D array  
-            heatmap = heatmap.astype(np.float32).reshape(-1)  
-            return heatmap  
-        except Exception as e:  
-            print(f"Couldn't load heatmap {npy_path}: {e}")  
-            raise
+
+        heatmap = np.load(npy_path)  
+        heatmap = heatmap.astype(np.float32) # (N,3)
+        return heatmap  
+
     
     def _load_json(self, json_path):
         with open(json_path, 'r') as f:
             data = json.load(f)
-        bracket_point = np.array(data['bracket'], dtype=np.float32)
-        try:
-            facial_point = np.array(data['facial'], dtype=np.float32)
-        except:
-            facial_point = None
-        return bracket_point, facial_point
+        bracket = np.array(data['bracket'], dtype=np.float32)
+        incisal = np.array(data['incisal'], dtype=np.float32)
+        outer = np.array(data['outer'], dtype=np.float32)
+        return bracket, incisal, outer
     
     def get_data(self, idx, testing=False):  
         file_rel_path = self.data_list[idx % len(self.data_list)]  
@@ -136,7 +129,7 @@ class BracketMapDataset(DefaultDataset):
         heatmap_path = os.path.join(self.data_root, file_rel_path.replace(".stl", "_softlabel.npy"))
  
         coord, normal = self._load_stl(stl_path)
-        bracket_point, facial_point = self._load_json(json_path)
+        bracket, incisal, outer = self._load_json(json_path)
         segment = self._load_heatmap(heatmap_path)
         assert segment.shape[0] == coord.shape[0], f"Segment shape not matching for sample {stl_path}"
         d = {
@@ -144,12 +137,11 @@ class BracketMapDataset(DefaultDataset):
             "normal": normal,
             "name": Path(stl_path).stem,
             "full_path": stl_path,
-            "bracket": bracket_point,
+            "bracket": bracket,
+            "incisal": incisal,
+            "outer": outer,
             "segment": segment # heatmap to predict
         }
-        # some corrections
-        if facial_point is not None:
-            d["facial"] = facial_point
         return d
     
     def prepare_test_data(self, idx):
@@ -160,17 +152,17 @@ class BracketMapDataset(DefaultDataset):
         result_dict = dict(
             segment=data_dict.pop("segment"),  
             bracket=data_dict.pop("bracket"),
+            incisal = data_dict.pop("incisal"),
+            outer = data_dict.pop("outer"),
             name=data_dict.get("name"),
             full_path = data_dict.get("full_path")
-        ) 
-        if "facial" in data_dict:
-            result_dict["facial"] = data_dict.pop("facial")
+        )
         # ==================================================
 
         if "origin_segment" in data_dict:
-            assert "inverse" in data_dict
             result_dict["origin_segment"] = data_dict.pop("origin_segment")
-            result_dict["inverse"] = data_dict.pop("inverse")
+            if "inverse" in result_dict:
+                result_dict["inverse"] = data_dict.pop("inverse")
     
         # Create fragments with augmentations
         data_dict_list = []

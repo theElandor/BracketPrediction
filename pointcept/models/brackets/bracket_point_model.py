@@ -284,7 +284,7 @@ class VoxelBracketPredictor_v2(nn.Module):
         if self.freeze_coarse:
             for param in self.coarse_head.parameters():
                 param.requires_grad = False
-          
+ 
     def _save(self, input_dict: dict, bracket_point_pred: torch.Tensor) -> None:  
         """  
         Writes the predicted points as JSON files.  

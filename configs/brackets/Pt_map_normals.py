@@ -26,7 +26,7 @@ model = dict(
     type="HeatmapRegressor",    
     backbone=dict(    
         type="PT-v3m1",    
-        in_channels=3,  # xyz only  
+        in_channels=6,  # xyz + normals
         enc_depths=(2, 2, 2, 6, 2),
         enc_channels=(32, 64, 128, 256, 512),
         enc_num_head=(2, 4, 8, 16, 32),
@@ -43,16 +43,16 @@ model = dict(
 # -----------------------------  
 # Optimizer & Scheduler
 # -----------------------------  
-epoch = 30
-eval_epoch = 30
+epoch = 50
+eval_epoch = 50 # Set equal to epoch for single training run
 clip_grad = 1.0
 
-optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)
-scheduler = dict(
-    type="OneCycleLR",
-    max_lr=optimizer["lr"],
-    pct_start=0.10,
-    anneal_strategy="cos",
+optimizer = dict(type="AdamW", lr=0.0003, weight_decay=0.005)  
+scheduler = dict(  
+    type="OneCycleLR",  
+    max_lr=optimizer["lr"],  # References the optimizer's lr  
+    pct_start=0.15,
+    anneal_strategy="cos", 
     div_factor=10.0,
     final_div_factor=100.0,
 )
@@ -62,7 +62,7 @@ scheduler = dict(
 # -----------------------------    
 dataset_type = "BracketMapDataset"
 data_root = "/work/grana_maxillo/Mlugli/BracketsHeatmaps"
-feat_keys = ["coord"]
+feat_keys = ["coord", "normal"]
 grid_size = 0.005
 fold = 1
 
@@ -74,12 +74,12 @@ data = dict(
         debug=False,
         data_root=data_root,
         transform=[  
-            dict(type='RandomRotate', angle=[-0.05, 0.05], center=[0, 0, 0], axis='z', p=0.5),
-            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
-            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
-            dict(type='RandomScale', scale=[0.9, 1.1]),
-            dict(type='RandomFlip', p=0.5),
-            dict(type='RandomShift', shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
+            dict(type='CustomRandomRotate', angle=[-0.05, 0.05], center=[0, 0, 0], axis='z', p=0.5),
+            dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
+            dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
+            dict(type='CustomRandomScale', scale=[0.9, 1.1]),
+            dict(type='CustomRandomFlip', p=0.5),
+            dict(type='CustomRandomShift', shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
             dict(
                 type='GridSample',
                 grid_size=grid_size,
@@ -100,7 +100,7 @@ data = dict(
         split="test",
         fold=fold,
         data_root=data_root,
-        transform=[  
+        transform=[
             dict(type="Copy", keys_dict={"segment": "origin_segment"}),  
             dict(
                 type="GridSample",
