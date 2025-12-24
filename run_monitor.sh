@@ -1,4 +1,4 @@
-t s#!/bin/bash
+#!/bin/bash
 set -e
 
 # Activate conda
