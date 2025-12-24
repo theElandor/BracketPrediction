@@ -5,11 +5,11 @@ from pathlib import Path
 import json
 import trimesh
 
-def plot_teeth(bracket, incisal, outer, 
-               v_io, v_perp,
-               vertices, 
-               patient_id, fdi,
-               output_dir):
+def plot_teeth(bracket:np.ndarray, incisal:np.ndarray, outer:np.ndarray, 
+               v_io:np.ndarray, v_perp:np.ndarray,
+               vertices:np.ndarray, 
+               patient_id:str, fdi:int,
+               output_dir:Path):
 
     fig, axes = plt.subplots(1,3,figsize=(18,6))
     plane_size = 0.5  # smaller
@@ -75,7 +75,7 @@ def plot_teeth(bracket, incisal, outer,
     print(f"  💾 Saved visualization: {output_file}")
 
 
-def plot_jaw(data_folder, raw_scan: bool = False):
+def plot_jaw(data_folder:Path, raw_scan:bool = False):
     """
     Unified visualization for jaw predictions.
 
@@ -90,7 +90,6 @@ def plot_jaw(data_folder, raw_scan: bool = False):
       - Applies scanTransformMatrix from config_<patient>.json to each raw scan before plotting
       - Groups rotated teeth by jaw based on presence of 'upper'/'lower' in tooth_key (similar to previous visualize_rotated_jaw_with_predictions)
     """
-    data_folder = Path(data_folder)
     if raw_scan:
         points_file = data_folder / "output_reg" / "results" / "projected_points_rotated.json"
     else:
@@ -167,8 +166,7 @@ def plot_jaw(data_folder, raw_scan: bool = False):
         axes[1].scatter(vertices[:, 0], vertices[:, 2], c='lightgray', s=1, alpha=0.7)
         axes[2].scatter(vertices[:, 1], vertices[:, 2], c='lightgray', s=1, alpha=0.7)
 
-        colors = plt.cm.tab20(np.linspace(0, 1, len(teeth_data)))
-
+        colors = plt.get_cmap('tab20')(np.linspace(0, 1, len(teeth_data)))
         for idx, (fdi, points_data) in enumerate(teeth_data):
             color = colors[idx]
             incisal = np.array(points_data.get('incisal', [0, 0, 0]))

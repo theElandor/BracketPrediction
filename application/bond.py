@@ -33,8 +33,16 @@ from matplotlib.lines import Line2D
 from visualizers import plot_teeth
 from visualizers import plot_jaw
 
-def process_tooth_predictions(mesh, bracket_pred, incisal_pred, outer_pred, 
-                                patient_id, fdi, output_dir, tooth_key, teeth_path, visualize: bool = True):
+def process_tooth_predictions(mesh:trimesh.Trimesh, 
+                              bracket_pred:np.ndarray, 
+                              incisal_pred:np.ndarray, 
+                              outer_pred:np.ndarray, 
+                              patient_id:str, 
+                              fdi:int, 
+                              output_dir:Path, 
+                              tooth_key:str, 
+                              teeth_path:Path, 
+                              visualize:bool = True):
     """
     Creates three 2D views (XY, XZ, YZ) of the mesh with predicted points.
     Projects predictions onto mesh surface using nearest point method. 
@@ -80,6 +88,22 @@ def process_tooth_predictions(mesh, bracket_pred, incisal_pred, outer_pred,
     bracket_face_id, _, _ = face_ids
 
     json_data = None
+
+    # COMPUTATION OF THE VERTEX NORMAL VECTOR
+    # Correction is applied for molars
+    if fdi in [16, 17, 26, 27, 36, 37, 46, 47]:
+        bracket_mm = bracket / scaling  # Convert to mm space
+        vertices_mm = vertices / scaling  # Convert all vertices to mm space
+        
+        # Find vertices within 1.5mm radius
+        distances = np.linalg.norm(vertices_mm - bracket_mm, axis=1)
+        nearby_indices = np.where(distances <= 1.5)[0]
+        # Average the vertex normals of nearby vertices
+        nearby_normals = mesh.vertex_normals[nearby_indices]
+        v_normal = np.mean(nearby_normals, axis=0)
+    else:
+        v_normal = mesh.face_normals[bracket_face_id[0]]
+
     v_normal = mesh.face_normals[bracket_face_id[0]]
     v_normal = v_normal / np.linalg.norm(v_normal)
 
@@ -113,7 +137,7 @@ def process_tooth_predictions(mesh, bracket_pred, incisal_pred, outer_pred,
                    vertices, patient_id, fdi, output_dir)
     return json_data
 
-def postprocess_predictions(data_folder, visualize: bool = True):
+def postprocess_predictions(data_folder:Path, visualize:bool = True):
     """
     Post-processes predictions and creates visualizations.
     
@@ -121,7 +145,6 @@ def postprocess_predictions(data_folder, visualize: bool = True):
         data_folder: Path to the data folder containing predictions
         visualize: toggles visualization
     """
-    data_folder = Path(data_folder)
     output_reg_path = data_folder / "output_reg" / "results"
     teeth_path = data_folder / "output_seg" / "teeth"
     viz_dir = data_folder /  "output_reg" / "plots"
@@ -174,6 +197,8 @@ def postprocess_predictions(data_folder, visualize: bool = True):
 
     # Rotated version of points file.
     rotated_points = {}
+    patient_id = None # init patient id
+
     for tooth_key, pdata in all_points_data.items():
         # Load shift file before rotation
         shift = np.array([0.0, 0.0, 0.0])
