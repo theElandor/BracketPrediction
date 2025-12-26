@@ -34,97 +34,36 @@ from pointcept.engines.launch import launch
 import numpy as np
 import pyvista as pv
 import json
-import matplotlib.pyplot as plt
-from matplotlib import cm
+from visualizers import create_segmentation_visualization
 
 
-def normalize(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+def normalize(points: np.ndarray, flip:bool=False) -> tuple[np.ndarray, np.ndarray, float]:
     """
-    Normalize points to unit sphere centered at origin.
+    Rotate 180° around y-axis (for upper scan), then normalize points to unit sphere centered at origin.
     Returns: (normalized_points, translation, scale)
     """
-    centroid = np.mean(points, axis=0)
-    centered_points = points - centroid
+    # In production, the model runs on a version of the upper scan that is rotated
+    # of an extra 180 degrees around the Y axis, such that the lower and upper jaws are
+    # "overlapped", not registered anymore. Since during training we don't make the model
+    # robust to this sort of flip, we need to save the tooth meshes oriented as the model
+    # is used to. The lower jaw scan is untached, so we don't apply the extra rotation.
+    if flip:
+        rotation_matrix = np.array([
+            [-1, 0, 0],
+            [0, 1, 0],
+            [0, 0, -1]
+        ])
+        rotated_points = points @ rotation_matrix.T
+    else: rotated_points = points
+    
+    centroid = np.mean(rotated_points, axis=0)
+    centered_points = rotated_points - centroid
     distances = np.linalg.norm(centered_points, axis=1)
     max_distance = np.max(distances)
     scale = 1.0 / max_distance if max_distance > 0 else 1.0
     normalized_points = centered_points * scale
+    
     return normalized_points, centroid, scale
-
-
-def create_segmentation_visualization(mesh, mask, name, output_dir: Path):
-    """
-    Create a visualization of the segmented dental arch from 3 viewpoints.
-    Args:
-        stl_file: Path to original STL file
-        mask_file: Path to predicted segmentation mask (.npy)
-        output_dir: Output directory for visualization
-    """
-    # Load mesh and mask    
-    if len(mask) != len(mesh.points):
-        print(f"Warning: Cannot visualize - mask length mismatch")
-        return
-    
-    # Assign colors based on FDI index
-    unique_fdi = np.unique(mask)
-    cmap = cm.get_cmap('tab20')
-    
-    # Create color array for vertices and store color mapping for legend
-    colors = np.zeros((len(mask), 3))
-    color_map = {}  # Store FDI -> color mapping
-    
-    for i, fdi_val in enumerate(unique_fdi):
-        if fdi_val == 0:  # Gum - use gray
-            color = [0.7, 0.7, 0.7]
-            colors[mask == fdi_val] = color
-            color_map[fdi_val] = color
-        else:
-            rgb = cmap((i % 20) / 20.0)[:3]
-            colors[mask == fdi_val] = rgb
-            color_map[fdi_val] = rgb
-    
-    mesh['colors'] = colors
-    
-    # Define three viewpoints
-    viewpoints = [
-        {'azimuth': 0, 'elevation': 0, 'title': 'Front'},      # Front view
-        {'azimuth': 90, 'elevation': 0, 'title': 'Side'},      # Side view
-        {'azimuth': 0, 'elevation': 90, 'title': 'Top'}        # Top view
-    ]
-    
-    # Create figure with 3 subplots
-    fig = plt.figure(figsize=(15, 5))
-    
-    for idx, vp in enumerate(viewpoints):
-        plotter = pv.Plotter(off_screen=True, window_size=[800, 800])
-        plotter.add_mesh(mesh, scalars='colors', rgb=True, lighting=False)
-        plotter.camera.azimuth = vp['azimuth']
-        plotter.camera.elevation = vp['elevation']
-        plotter.camera.zoom(1.3)
-        img = plotter.screenshot(return_img=True)
-        plotter.close()
-        
-        ax = fig.add_subplot(1, 3, idx + 1)
-        ax.imshow(img)
-        ax.axis('off')
-        ax.set_title(vp['title'], fontsize=14, fontweight='bold')
-    
-    # Add single legend to the figure
-    from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor=color_map[fdi], label=str(int(fdi))) 
-                       for fdi in sorted(unique_fdi)]
-    
-    fig.legend(handles=legend_elements, loc='lower center', ncol=len(unique_fdi), 
-               fontsize=10, frameon=True, bbox_to_anchor=(0.5, -0.05))
-    
-    plt.suptitle(f'Segmentation: {name}', fontsize=16, fontweight='bold')
-    plt.tight_layout()
-    
-    vis_output_path = output_dir / f"{name}_segmentation_views.png"
-    plt.savefig(vis_output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"  Saved visualization: {vis_output_path}")
 
 
 def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, visualize: bool = True):
@@ -148,10 +87,8 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
         return
     
     base_name = stl_file.stem
-    stl_output_dir = output_dir / "teeth"
-    json_output_dir = output_dir / "teeth"
-    stl_output_dir.mkdir(parents=True, exist_ok=True)
-    json_output_dir.mkdir(parents=True, exist_ok=True)
+    teeth_output_dir = output_dir / "teeth"
+    teeth_output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get unique FDI indices (excluding 0 which is gum)
     unique_fdi_indices = np.unique(mask)
@@ -172,7 +109,7 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
             continue
         
         class_points = points[class_mask]
-        normalized_class_points, translation, scale = normalize(class_points)
+        normalized_class_points, translation, scale = normalize(class_points, "upper" in base_name)
         
         face_mask = np.all(np.isin(faces, class_indices), axis=1)
         class_faces_old_idx = faces[face_mask]
@@ -193,11 +130,11 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
         # Save STL file
         if "lower" in base_name: fdi_index = MAPPING[fdi_index]
         if "upper" in base_name: fdi_index = MAPPING[fdi_index]-20
-        stl_output_path = stl_output_dir / f"{base_name}_FDI_{fdi_index}.stl"
+        stl_output_path = teeth_output_dir / f"{base_name}_FDI_{fdi_index}.stl"
         tooth_mesh.save(stl_output_path)
  
         # Save normalization parameters to JSON
-        json_output_path = json_output_dir / f"{base_name}_FDI_{fdi_index}.json"
+        json_output_path = teeth_output_dir / f"{base_name}_FDI_{fdi_index}.json"
         json_data = {
             "translation": translation.tolist(),
             "scaling": float(scale)

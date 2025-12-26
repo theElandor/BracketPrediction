@@ -29,6 +29,8 @@ from pointcept.utils.misc import (
     intersection_and_union_gpu,
     make_dirs,
 )
+# custom import
+from pointcept.utils.bracket_mapper import BracketMapper
 
 try:
     import trimesh
@@ -1592,6 +1594,10 @@ class HeatmapTester(TesterBase):
             mesh = trimesh.load(full_path, force="mesh")
             verts = np.asarray(mesh.vertices)
             channels_proposals = {}
+            # need to activate this if in production, for now it's always active
+            #bm = BracketMapper()
+            #orientation_map = bm.get_sim_values(full_path, mesh, save=False)
+            #bm.plot_mesh(full_path, orientation_map)
             # ============== load orientation map ==================
             #full_path_p = Path(full_path)
             #orientation_map_p = full_path_p.with_name(full_path_p.stem + "_orient.npy")
@@ -1624,7 +1630,7 @@ class HeatmapTester(TesterBase):
         )    
  
         # Save all results to JSON file
-        results_json_path = os.path.join(save_path, "results.json")
+        results_json_path = os.path.join(save_path, "predictions.json")
         try:
             with open(results_json_path, 'w') as f:
                 json.dump(all_results, f, indent=4)

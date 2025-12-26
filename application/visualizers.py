@@ -4,6 +4,9 @@ import numpy as np
 from pathlib import Path
 import json
 import trimesh
+import pyvista as pv
+from matplotlib import cm
+
 
 def plot_teeth(bracket:np.ndarray, incisal:np.ndarray, outer:np.ndarray, 
                v_io:np.ndarray, v_perp:np.ndarray,
@@ -234,3 +237,80 @@ def plot_jaw(data_folder:Path, raw_scan:bool = False):
         plt.savefig(output_file, dpi=150, bbox_inches='tight')
         plt.close()
         print(f"  💾 Saved visualization: {output_file}")
+
+def create_segmentation_visualization(mesh:pv.DataObject, 
+                                      mask:np.ndarray,
+                                      name:str, 
+                                      output_dir: Path):
+    """
+    Create a visualization of the segmented dental arch from 3 viewpoints.
+    Args:
+        stl_file: Path to original STL file
+        mask_file: Path to predicted segmentation mask (.npy)
+        output_dir: Output directory for visualization
+    """
+    # Load mesh and mask    
+    if len(mask) != len(mesh.points):
+        print(f"Warning: Cannot visualize - mask length mismatch")
+        return
+    
+    # Assign colors based on FDI index
+    unique_fdi = np.unique(mask)
+    cmap = cm.get_cmap('tab20')
+    
+    # Create color array for vertices and store color mapping for legend
+    colors = np.zeros((len(mask), 3))
+    color_map = {}  # Store FDI -> color mapping
+    
+    for i, fdi_val in enumerate(unique_fdi):
+        if fdi_val == 0:  # Gum - use gray
+            color = [0.7, 0.7, 0.7]
+            colors[mask == fdi_val] = color
+            color_map[fdi_val] = color
+        else:
+            rgb = cmap((i % 20) / 20.0)[:3]
+            colors[mask == fdi_val] = rgb
+            color_map[fdi_val] = rgb
+    
+    mesh['colors'] = colors
+    
+    # Define three viewpoints
+    viewpoints = [
+        {'azimuth': 0, 'elevation': 0, 'title': 'Front'},      # Front view
+        {'azimuth': 90, 'elevation': 0, 'title': 'Side'},      # Side view
+        {'azimuth': 0, 'elevation': 90, 'title': 'Top'}        # Top view
+    ]
+    
+    # Create figure with 3 subplots
+    fig = plt.figure(figsize=(15, 5))
+    
+    for idx, vp in enumerate(viewpoints):
+        plotter = pv.Plotter(off_screen=True, window_size=[800, 800])
+        plotter.add_mesh(mesh, scalars='colors', rgb=True, lighting=False)
+        plotter.camera.azimuth = vp['azimuth']
+        plotter.camera.elevation = vp['elevation']
+        plotter.camera.zoom(1.3)
+        img = plotter.screenshot(return_img=True)
+        plotter.close()
+        
+        ax = fig.add_subplot(1, 3, idx + 1)
+        ax.imshow(img)
+        ax.axis('off')
+        ax.set_title(vp['title'], fontsize=14, fontweight='bold')
+    
+    # Add single legend to the figure
+    from matplotlib.patches import Patch
+    legend_elements = [Patch(facecolor=color_map[fdi], label=str(int(fdi))) 
+                       for fdi in sorted(unique_fdi)]
+    
+    fig.legend(handles=legend_elements, loc='lower center', ncol=len(unique_fdi), 
+               fontsize=10, frameon=True, bbox_to_anchor=(0.5, -0.05))
+    
+    plt.suptitle(f'Segmentation: {name}', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    
+    vis_output_path = output_dir / f"{name}_segmentation_views.png"
+    plt.savefig(vis_output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"  Saved visualization: {vis_output_path}")
