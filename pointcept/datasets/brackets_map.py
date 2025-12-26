@@ -33,8 +33,10 @@ class BracketMapDataset(DefaultDataset):
         test_cfg=None,
         loop=1,
         fold = 6, # fold to use
+        production=False,
     ):
         self.fold = fold
+        self.production = production
         super().__init__(
             split=split,
             data_root=data_root,
@@ -50,6 +52,15 @@ class BracketMapDataset(DefaultDataset):
             self.aug_transform = [Compose(aug) for aug in test_cfg.aug_transform]
  
     def get_data_list(self):
+
+        if self.fold is None:
+            # Load all STL files from the data root
+            file_names = []
+            for file_path in os.listdir(self.data_root):
+                if file_path.endswith('.stl'):
+                    file_names.append(file_path)
+            print(f"Loaded {len(file_names)} samples from data_root (fold=None)")
+            return file_names
 
         """Load list of data samples from fold JSON files, with path mapping."""
         fold_file = os.path.join(self.data_root, f"split_{self.fold}.json")
@@ -108,13 +119,16 @@ class BracketMapDataset(DefaultDataset):
    
     def _load_heatmap(self, npy_path):  
         """Load heatmap values from .npy file"""  
-
         heatmap = np.load(npy_path)  
         heatmap = heatmap.astype(np.float32) # (N,3)
         return heatmap  
 
     
     def _load_json(self, json_path):
+        # If in production, just load empty vectors
+        if self.production:
+            bracket, incisal, outer = np.zeros((3,), dtype=np.float32)     
+            return bracket, incisal, outer
         with open(json_path, 'r') as f:
             data = json.load(f)
         bracket = np.array(data['bracket'], dtype=np.float32)
@@ -130,7 +144,11 @@ class BracketMapDataset(DefaultDataset):
  
         coord, normal = self._load_stl(stl_path)
         bracket, incisal, outer = self._load_json(json_path)
-        segment = self._load_heatmap(heatmap_path)
+        if self.production:
+            # don't need the GT heatmap when in production
+            segment = np.empty_like(coord)
+        else:
+            segment = self._load_heatmap(heatmap_path)
         assert segment.shape[0] == coord.shape[0], f"Segment shape not matching for sample {stl_path}"
         d = {
             "coord": coord,

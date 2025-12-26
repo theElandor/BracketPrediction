@@ -149,11 +149,7 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
     teeth_path = data_folder / "output_seg" / "teeth"
     viz_dir = data_folder /  "output_reg" / "plots"
     print("\n=== Starting Post-Processing and Visualization ===")
-    pred_files = list(output_reg_path.glob("*.json"))
-    if not pred_files:
-        print(f"No prediction files found in {output_reg_path}")
-        return    
-    pred_file = pred_files[0]
+    pred_file = output_reg_path / "predictions.json"
     print(f"Loading predictions from: {pred_file.name}")
     with open(pred_file, 'r') as f: all_predictions = json.load(f)
     print(f"Found predictions for {len(all_predictions)} teeth")    
@@ -197,7 +193,6 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
 
     # Rotated version of points file.
     rotated_points = {}
-    patient_id = None # init patient id
 
     for tooth_key, pdata in all_points_data.items():
         # Load shift file before rotation
@@ -213,6 +208,8 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
                     shift = np.array(shift_data.get('shift', [0.0, 0.0, 0.0]))
             except Exception as e:
                 print(f"  ⚠️ Could not load or parse shift file {shift_file}: {e}")
+        else: 
+            print(f"  ⚠️ Shift file does not exist for patient {patient_id}")
         
         # Choose rotation sequence based on jaw
         if jaw_type == 'lower':

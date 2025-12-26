@@ -1624,7 +1624,7 @@ class HeatmapTester(TesterBase):
         )    
  
         # Save all results to JSON file
-        results_json_path = os.path.join(save_path, "results.json")
+        results_json_path = os.path.join(save_path, "predictions.json")
         try:
             with open(results_json_path, 'w') as f:
                 json.dump(all_results, f, indent=4)

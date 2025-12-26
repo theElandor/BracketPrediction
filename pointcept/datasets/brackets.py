@@ -157,11 +157,11 @@ class BracketPointDataset(DefaultDataset):
         
         coord, normal = self._load_stl(stl_path)
         bracket_point, incisal, outer = self._load_json(json_path)
-        orientation_map = self._load_orientation_map(orientation_path)
+        #orientation_map = self._load_orientation_map(orientation_path)
         d = {
             "coord": coord,
             "normal": normal,
-            "orientation": orientation_map,
+        #    "orientation": orientation_map,
             "name": Path(stl_path).stem,
             "bracket": bracket_point,
             "incisal": incisal,
