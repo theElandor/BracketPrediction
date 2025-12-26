@@ -116,11 +116,23 @@ def process_tooth_predictions(mesh:trimesh.Trimesh,
     v_perp = v_perp / np.linalg.norm(v_perp)
     
     # Apply inverse transformation: denormalize the points
+
     bracket_denorm = bracket / scaling + translation
     incisal_denorm = incisal / scaling + translation
     outer_denorm = outer / scaling + translation
     v_perp_denorm = v_perp / scaling
     v_normal_denorm = v_normal / scaling
+    if fdi <= 28:
+        rotation_matrix = np.array([
+            [-1, 0, 0],
+            [0, 1, 0],
+            [0, 0, -1]
+        ])
+        bracket_denorm = bracket_denorm @ rotation_matrix.T
+        incisal_denorm = incisal_denorm @ rotation_matrix.T
+        outer_denorm = outer_denorm @ rotation_matrix.T
+        v_perp_denorm = v_perp_denorm @ rotation_matrix.T
+        v_normal_denorm = v_normal_denorm @ rotation_matrix.T
     
     json_data = {
         "incisal": incisal_denorm.tolist(),
@@ -262,9 +274,8 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
     print(f"\n✅ Post-processing complete. Visualizations saved to: {viz_dir}")
     
     # ============= Debug visualizations ==================
-    if visualize:
-        plot_jaw(data_folder, raw_scan=False)
-        plot_jaw(data_folder, raw_scan=True)
+    plot_jaw(data_folder, raw_scan=False)
+    plot_jaw(data_folder, raw_scan=True)
 
 def main_worker(cfg):
     os.makedirs(cfg.save_path, exist_ok=True)
@@ -280,7 +291,7 @@ def main_worker(cfg):
     
     # Extract data_folder from save_path
     data_folder = Path(cfg.save_path).parent
-    postprocess_predictions(data_folder, visualize=not cfg.no_visuals)
+    postprocess_predictions(data_folder, visualize= not cfg.no_visuals)
 
 
 def main():

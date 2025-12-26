@@ -75,8 +75,12 @@ data = dict(
                 dict(type="Collect", keys=("coord", "grid_coord", "index", "inverse"), feat_keys=feat_keys),
             ],
             aug_transform=[
-                # no test time augmentations.
+                # test time augmentations
                 [dict(type='RandomRotate', angle=[0.0, 0.0], axis='z', p=0.0)],
+                #[dict(type="RandomRotateTargetAngle", angle=[0], axis="z", center=[0, 0, 0], p=1)],  
+                #[dict(type="RandomRotateTargetAngle", angle=[1/2], axis="z", center=[0, 0, 0], p=1)],  
+                #[dict(type="RandomRotateTargetAngle", angle=[1], axis="z", center=[0, 0, 0], p=1)],  
+                #[dict(type="RandomRotateTargetAngle", angle=[3/2], axis="z", center=[0, 0, 0], p=1)],
             ],
         ),
     ),
