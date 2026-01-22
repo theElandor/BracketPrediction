@@ -16,8 +16,11 @@ Usage:
         --bond-weight /workspace/application/weights/regressor_best.pth \
         --check-interval 10
 """
-import pointcept
+# CRITICAL: Set rendering environment variables BEFORE any imports that use VTK/graphics
 import os
+os.environ["VTK_OPENGL_HAS_EGL"] = "0"
+
+import pointcept
 import sys
 import json
 import time

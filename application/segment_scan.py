@@ -32,9 +32,7 @@ from pointcept.engines.test import TESTERS
 from pathlib import Path
 from pointcept.engines.launch import launch
 import numpy as np
-import pyvista as pv
 import json
-from visualizers import create_segmentation_visualization
 import torch
 
 
@@ -76,13 +74,19 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
         mask_file: Path to predicted segmentation mask (.npy)
         output_dir: Output directory for processed teeth
     """
+    import pyvista as pv
+    from visualizers import create_segmentation_visualization
+    
     print(f"Postprocessing {stl_file.name}...")
     
     # Load mesh and mask
     mesh = pv.read(stl_file)
     mask = np.load(mask_file)
     if visualize:
-        create_segmentation_visualization(mesh, mask, stl_file.stem, output_dir) 
+        try:
+            create_segmentation_visualization(mesh, mask, stl_file.stem, output_dir)
+        except Exception as e:
+            print(f"  ⚠️  Visualization failed (continuing anyway): {e}") 
     if len(mask) != len(mesh.points):
         print(f"Warning: Mask length ({len(mask)}) doesn't match points ({len(mesh.points)})")
         return
@@ -163,12 +167,16 @@ def run_segmentation_with_model(cfg, model, data_folder: Path, visualize: bool =
         bool: True if successful, False otherwise
     """
     try:
+        # Set data paths in config before setup
+        cfg._cfg_dict["data_root"] = str(data_folder)
+        cfg._cfg_dict["save_path"] = str(Path(data_folder) / "output_seg")
+        cfg._cfg_dict["data"]["test"]["data_root"] = str(data_folder)
+        cfg.no_visuals = not visualize
+        
         os.makedirs(cfg.save_path, exist_ok=True)
         
         # Set up configuration
         cfg = default_setup(cfg)
-        cfg.data.test.data_root = str(data_folder)
-        cfg.no_visuals = not visualize
         
         # Build and run tester with cached model
         test_cfg = dict(cfg=cfg, model=model, **cfg.test)

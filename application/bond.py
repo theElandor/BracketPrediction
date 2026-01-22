@@ -18,7 +18,6 @@ import debugpy
 import os
 import json
 import numpy as np
-import trimesh
 import matplotlib.pyplot as plt
 from pathlib import Path
 from pointcept.engines.defaults import (
@@ -31,7 +30,7 @@ from pointcept.engines.launch import launch
 from matplotlib.lines import Line2D
 import torch
 
-def process_tooth_predictions(mesh:trimesh.Trimesh, 
+def process_tooth_predictions(mesh, 
                               bracket_pred:np.ndarray, 
                               incisal_pred:np.ndarray, 
                               outer_pred:np.ndarray, 
@@ -54,6 +53,9 @@ def process_tooth_predictions(mesh:trimesh.Trimesh,
         output_dir: directory to save the PNG file
         teeth_path: path to the teeth directory containing transformation JSON files
     """
+    import trimesh
+    from visualizers import plot_teeth
+    
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -142,9 +144,11 @@ def process_tooth_predictions(mesh:trimesh.Trimesh,
         },
     }
     if visualize:
-        from visualizers import plot_teeth
-        plot_teeth(bracket, incisal, outer, v_io, v_perp,
-                   vertices, patient_id, fdi, output_dir)
+        try:
+            plot_teeth(bracket, incisal, outer, v_io, v_perp,
+                       vertices, patient_id, fdi, output_dir)
+        except Exception as e:
+            print(f"  ⚠️  Tooth visualization failed: {e}")
     return json_data
 
 def postprocess_predictions(data_folder:Path, visualize:bool = True):
@@ -155,6 +159,9 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
         data_folder: Path to the data folder containing predictions
         visualize: toggles visualization
     """
+    import trimesh
+    from visualizers import plot_jaw
+    
     output_reg_path = data_folder / "output_reg" / "results"
     teeth_path = data_folder / "output_seg" / "teeth"
     viz_dir = data_folder /  "output_reg" / "plots"
@@ -272,9 +279,11 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
     print(f"\n✅ Post-processing complete. Visualizations saved to: {viz_dir}")
     if visualize: 
         # ============= Debug visualizations ==================
-        from visualizers import plot_jaw
-        plot_jaw(data_folder, raw_scan=False)
-        plot_jaw(data_folder, raw_scan=True)
+        try:
+            plot_jaw(data_folder, raw_scan=False)
+            plot_jaw(data_folder, raw_scan=True)
+        except Exception as e:
+            print(f"  ⚠️  Jaw visualization failed: {e}")
 
 
 def run_bond_with_model(cfg, model, data_folder: Path, visualize: bool = True) -> bool:
@@ -291,13 +300,24 @@ def run_bond_with_model(cfg, model, data_folder: Path, visualize: bool = True) -
         bool: True if successful, False otherwise
     """
     try:
-        os.makedirs(cfg.save_path, exist_ok=True)
+        data_folder = Path(data_folder)
+        teeth_path = data_folder / "output_seg" / "teeth"
+        output_path = data_folder / "output_reg"
+        
+        # Verify segmentation output exists
+        if not teeth_path.exists():
+            raise FileNotFoundError(f"Segmentation output not found: {teeth_path}. Did segmentation complete successfully?")
+        
+        # Set data paths in config before setup
+        cfg._cfg_dict["data_root"] = str(teeth_path)
+        cfg._cfg_dict["save_path"] = str(output_path)
+        cfg._cfg_dict["data"]["test"]["data_root"] = str(teeth_path)
+        cfg.no_visuals = not visualize
+        
+        os.makedirs(output_path, exist_ok=True)
         
         # Set up configuration
         cfg = default_setup(cfg)
-        cfg.data.test.data_root = str(data_folder / "output_seg" / "teeth")
-        cfg.save_path = str(data_folder / "output_reg")
-        cfg.no_visuals = not visualize
         
         # Build and run tester with cached model
         test_cfg = dict(cfg=cfg, model=model, **cfg.test)
