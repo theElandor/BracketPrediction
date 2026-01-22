@@ -35,6 +35,7 @@ import numpy as np
 import pyvista as pv
 import json
 from visualizers import create_segmentation_visualization
+import torch
 
 
 def normalize(points: np.ndarray, flip:bool=False) -> tuple[np.ndarray, np.ndarray, float]:
@@ -146,6 +147,65 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
         print(f"  Saved FDI {fdi_index}: {len(class_points)} points, {len(class_faces)} faces")
         print(f"    STL: {stl_output_path}")
         print(f"    JSON: {json_output_path}")
+
+
+def run_segmentation_with_model(cfg, model, data_folder: Path, visualize: bool = True) -> bool:
+    """
+    Run segmentation with a pre-loaded model.
+    
+    Args:
+        cfg: Configuration object
+        model: Pre-loaded segmentation model
+        data_folder: Path to data folder containing STL files
+        visualize: Whether to generate visualizations
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        os.makedirs(cfg.save_path, exist_ok=True)
+        
+        # Set up configuration
+        cfg = default_setup(cfg)
+        cfg.data.test.data_root = str(data_folder)
+        cfg.no_visuals = not visualize
+        
+        # Build and run tester with cached model
+        test_cfg = dict(cfg=cfg, model=model, **cfg.test)
+        tester = TESTERS.build(test_cfg)
+        tester.test()
+        
+        # Postprocessing: split and normalize teeth
+        print("\n" + "="*80)
+        print("Starting postprocessing...")
+        print("="*80 + "\n")
+        
+        output_folder = Path(cfg.save_path)
+        
+        # Find STL files in data folder
+        stl_files = list(data_folder.glob("*.stl"))
+        
+        for stl_file in stl_files:
+            # Find corresponding prediction mask
+            mask_file = output_folder / "result" / f"{stl_file.stem}_pred.npy"
+            
+            if not mask_file.exists():
+                print(f"Warning: No prediction found for {stl_file.name}, skipping...")
+                continue
+            
+            postprocess_segmentation(stl_file, mask_file, output_folder, visualize=visualize)
+        
+        print("\n" + "="*80)
+        print("Postprocessing complete!")
+        print("="*80)
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error in segmentation processing: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 def main_worker(cfg):

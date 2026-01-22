@@ -31,6 +31,9 @@ import debugpy
 import requests
 import trimesh 
 import numpy as np
+import torch
+from pointcept.engines.defaults import default_config_parser, default_setup
+from pointcept.models import build_model
 
 PENDING = 0
 PROCESSING = 1
@@ -57,7 +60,7 @@ class ScanMonitor:
         self.check_interval = check_interval
         self.status_file = self.data_root / status_file  # Status file inside data_root
         self.no_visuals = no_visuals
-        self.prep = Preprocessor() 
+        self.prep = Preprocessor()
 
         # Validate paths
         if not self.data_root.exists():
@@ -71,11 +74,56 @@ class ScanMonitor:
         if not self.bond_weight.exists():
             raise ValueError(f"Bond weight does not exist: {self.bond_weight}")
         
+        # Load models into memory
+        self.seg_model = None
+        self.seg_cfg = None
+        self.bond_model = None
+        self.bond_cfg = None
+        self._load_models()
+        
         self.status = self.load_status()
         print(f"✅ Monitor initialized")
         print(f"   Data root: {self.data_root}")
         print(f"   Check interval: {self.check_interval}s")
         print(f"   Status file: {self.status_file}")
+    
+    def _load_models(self):
+        """Load both segmentation and bond prediction models into GPU memory."""
+        print("\n🔄 Loading models into GPU memory...")
+        try:
+            # Load segmentation model
+            self.seg_cfg = default_config_parser(str(self.seg_config), {})
+            self.seg_cfg = default_setup(self.seg_cfg)
+            self.seg_model = build_model(self.seg_cfg.model)
+            checkpoint = torch.load(str(self.seg_weight), weights_only=False)
+            self.seg_model.load_state_dict(checkpoint.get("state_dict", checkpoint))
+            self.seg_model = self.seg_model.cuda()
+            self.seg_model.eval()
+            print("   ✅ Segmentation model loaded")
+            
+            # Load bond prediction model
+            self.bond_cfg = default_config_parser(str(self.bond_config), {})
+            self.bond_cfg = default_setup(self.bond_cfg)
+            self.bond_model = build_model(self.bond_cfg.model)
+            checkpoint = torch.load(str(self.bond_weight), weights_only=False)
+            self.bond_model.load_state_dict(checkpoint.get("state_dict", checkpoint))
+            self.bond_model = self.bond_model.cuda()
+            self.bond_model.eval()
+            print("   ✅ Bond prediction model loaded")
+        except Exception as e:
+            print(f"   ❌ Error loading models: {e}")
+            raise
+    
+    def __del__(self):
+        """Clean up models on shutdown."""
+        try:
+            if self.seg_model is not None:
+                del self.seg_model
+            if self.bond_model is not None:
+                del self.bond_model
+            torch.cuda.empty_cache()
+        except:
+            pass
     
     def load_status(self) -> Dict:
         """
@@ -195,94 +243,64 @@ class ScanMonitor:
         return len(unprocessed_for_pipeline) > 0
     
     def run_segmentation(self, patient_id: str, patient_dir: Path) -> tuple[bool, str]:
-        """Run segmentation script for patient directory."""
+        """Run segmentation using cached model for patient directory."""
         print(f"\n{'='*80}")
         print(f"🦷 Running SEGMENTATION for patient {patient_id}")
         print(f"{'='*80}")
 
-        cmd = [
-            "xvfb-run", "-a",
-            sys.executable,
-            "application/segment_scan.py",
-            "--config-file", str(self.seg_config),
-            "--options",
-            f"data_folder={patient_dir}",
-            f"weight={self.seg_weight}"
-        ]
-
-        if self.no_visuals:
-            cmd.append("--no-visuals")
-        
         try:
-            env = os.environ.copy()
-            env['PYTHONPATH'] = str(self.data_root.parent.parent)  # Points to /workspace
-            result = subprocess.run(
-                cmd,
-                env=env,
-                cwd=str(self.data_root.parent.parent),  # Run from /workspace
-                check=True,
-                capture_output=True,
-                text=True
+            from segment_scan import run_segmentation_with_model
+            
+            success = run_segmentation_with_model(
+                cfg=self.seg_cfg,
+                model=self.seg_model,
+                data_folder=patient_dir,
+                visualize=not self.no_visuals
             )
-            print(result.stdout)
-            if result.stderr:
-                print("STDERR:", result.stderr)
-            message = f"✅ Segmentation completed for {patient_id}"
-            print(message)
-            return True, message
-
-        except subprocess.CalledProcessError as e:
+            
+            if success:
+                message = f"✅ Segmentation completed for {patient_id}"
+                print(message)
+                return True, message
+            else:
+                return False, "Segmentation processing failed"
+                
+        except Exception as e:
             print(f"❌ Segmentation failed for {patient_id}")
             print(f"   Error: {e}")
-            if e.stdout:
-                print("STDOUT:", e.stdout)
-            if e.stderr:
-                print("STDERR:", e.stderr)
-            return False, str(e.stderr)
+            import traceback
+            traceback.print_exc()
+            return False, str(e)
     
     def run_bond_prediction(self, patient_id: str, patient_dir: Path) -> tuple[bool, str]:
-        """Run bond prediction script for patient directory."""
+        """Run bond prediction using cached model for patient directory."""
         print(f"\n{'='*80}")
         print(f"📍 Running BOND PREDICTION for patient {patient_id}")
         print(f"{'='*80}")
         
-        cmd = [
-            sys.executable,
-            "bond.py",
-            "--config-file", str(self.bond_config),
-            "--options",
-            f"data_folder={patient_dir}",
-            f"weight={self.bond_weight}"
-        ]
-        if self.no_visuals:
-            cmd.append("--no-visuals")
-        
         try:
-            env = os.environ.copy()
-            env['PYTHONPATH'] = str(self.data_root.parent.parent)
-            result = subprocess.run(
-                cmd,
-                env=env,
-                cwd=self.data_root.parent,  # Run from project root
-                check=True,
-                capture_output=True,
-                text=True
+            from bond import run_bond_with_model
+            
+            success = run_bond_with_model(
+                cfg=self.bond_cfg,
+                model=self.bond_model,
+                data_folder=patient_dir,
+                visualize=not self.no_visuals
             )
-            print(result.stdout)
-            if result.stderr:
-                print("STDERR:", result.stderr)
-            message = f"✅ Bond prediction completed for {patient_id}"
-            print(message)
-            return True, message
-
-        except subprocess.CalledProcessError as e:
+            
+            if success:
+                message = f"✅ Bond prediction completed for {patient_id}"
+                print(message)
+                return True, message
+            else:
+                return False, "Bond prediction processing failed"
+                
+        except Exception as e:
             print(f"❌ Bond prediction failed for {patient_id}")
             print(f"   Error: {e}")
-            if e.stdout:
-                print("STDOUT:", e.stdout)
-            if e.stderr:
-                print("STDERR:", e.stderr)
-            return False, str(e.stderr)
+            import traceback
+            traceback.print_exc()
+            return False, str(e)
     
     def process_patient(self, patient_id: str, patient_dir: Path):
         """Process a patient through the full pipeline: pre-processing, segmentation, bonding."""

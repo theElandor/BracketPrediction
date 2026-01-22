@@ -29,6 +29,7 @@ from pointcept.engines.defaults import (
 from pointcept.engines.test import TESTERS
 from pointcept.engines.launch import launch
 from matplotlib.lines import Line2D
+import torch
 
 def process_tooth_predictions(mesh:trimesh.Trimesh, 
                               bracket_pred:np.ndarray, 
@@ -274,6 +275,50 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
         from visualizers import plot_jaw
         plot_jaw(data_folder, raw_scan=False)
         plot_jaw(data_folder, raw_scan=True)
+
+
+def run_bond_with_model(cfg, model, data_folder: Path, visualize: bool = True) -> bool:
+    """
+    Run bond prediction with a pre-loaded model.
+    
+    Args:
+        cfg: Configuration object
+        model: Pre-loaded bond prediction model
+        data_folder: Path to data folder containing segmentation results
+        visualize: Whether to generate visualizations
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        os.makedirs(cfg.save_path, exist_ok=True)
+        
+        # Set up configuration
+        cfg = default_setup(cfg)
+        cfg.data.test.data_root = str(data_folder / "output_seg" / "teeth")
+        cfg.save_path = str(data_folder / "output_reg")
+        cfg.no_visuals = not visualize
+        
+        # Build and run tester with cached model
+        test_cfg = dict(cfg=cfg, model=model, **cfg.test)
+        tester = TESTERS.build(test_cfg)
+        tester.test()
+        
+        # Add post-processing and visualization after testing
+        print("\n" + "="*60)
+        print("Testing complete. Starting post-processing...")
+        print("="*60)
+        
+        postprocess_predictions(data_folder, visualize=visualize)
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error in bond prediction processing: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 
 def main_worker(cfg):
     os.makedirs(cfg.save_path, exist_ok=True)
