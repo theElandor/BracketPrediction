@@ -30,9 +30,6 @@ from pointcept.engines.test import TESTERS
 from pointcept.engines.launch import launch
 from matplotlib.lines import Line2D
 
-from visualizers import plot_teeth
-from visualizers import plot_jaw
-
 def process_tooth_predictions(mesh:trimesh.Trimesh, 
                               bracket_pred:np.ndarray, 
                               incisal_pred:np.ndarray, 
@@ -144,6 +141,7 @@ def process_tooth_predictions(mesh:trimesh.Trimesh,
         },
     }
     if visualize:
+        from visualizers import plot_teeth
         plot_teeth(bracket, incisal, outer, v_io, v_perp,
                    vertices, patient_id, fdi, output_dir)
     return json_data
@@ -273,6 +271,7 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
     print(f"\n✅ Post-processing complete. Visualizations saved to: {viz_dir}")
     if visualize: 
         # ============= Debug visualizations ==================
+        from visualizers import plot_jaw
         plot_jaw(data_folder, raw_scan=False)
         plot_jaw(data_folder, raw_scan=True)
 

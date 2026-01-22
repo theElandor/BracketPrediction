@@ -29,15 +29,8 @@ from typing import Dict, Set, List
 from preprocessor import Preprocessor
 import debugpy
 import requests
-
-# NOTE: This script requires 'trimesh' and 'numpy'.
-# Install them with: pip install trimesh numpy
-try:
-    import trimesh
-    import numpy as np
-except ImportError:
-    print("Error: 'trimesh' and 'numpy' are required. Please install them using 'pip install trimesh numpy'")
-    sys.exit(1)
+import trimesh 
+import numpy as np
 
 PENDING = 0
 PROCESSING = 1
