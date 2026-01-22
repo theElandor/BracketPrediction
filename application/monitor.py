@@ -437,7 +437,7 @@ def main():
     parser.add_argument("--seg-weight",type=str, required=True,help="Path to segmentation model weights")
     parser.add_argument("--bond-config",type=str,required=True,help="Path to bond prediction config file")
     parser.add_argument("--bond-weight",type=str,required=True,help="Path to bond prediction model weights")
-    parser.add_argument("--check-interval",type=int,default=10,help="Interval in seconds between checks (default: 10)")
+    parser.add_argument("--check-interval",type=int,default=10,help="Interval in seconds between checks (default: 3)")
     parser.add_argument("--status-file",type=str,default="processing_status.json",help="Name of status file (default: processing_status.json)")
     parser.add_argument("--prod", action="store_true", help="Run in production mode (no visuals)") 
     parser.add_argument("--debug", action="store_true", help="Wait for debugger to attach")

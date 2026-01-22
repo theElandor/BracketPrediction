@@ -104,7 +104,6 @@ def process_tooth_predictions(mesh:trimesh.Trimesh,
     else:
         v_normal = mesh.face_normals[bracket_face_id[0]]
 
-    v_normal = mesh.face_normals[bracket_face_id[0]]
     v_normal = v_normal / np.linalg.norm(v_normal)
 
     # Get axis between incisal and outer points
@@ -272,10 +271,10 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
     with open(rotated_output_path, 'w') as f: json.dump(rotated_points, f, indent=4)
     print(f"\n💾 Saved rotated projected points to: {rotated_output_path}")
     print(f"\n✅ Post-processing complete. Visualizations saved to: {viz_dir}")
-    
-    # ============= Debug visualizations ==================
-    plot_jaw(data_folder, raw_scan=False)
-    plot_jaw(data_folder, raw_scan=True)
+    if visualize: 
+        # ============= Debug visualizations ==================
+        plot_jaw(data_folder, raw_scan=False)
+        plot_jaw(data_folder, raw_scan=True)
 
 def main_worker(cfg):
     os.makedirs(cfg.save_path, exist_ok=True)

@@ -1574,7 +1574,7 @@ class HeatmapTester(TesterBase):
                 pred = pred[data_dict["inverse"]]    
                 segment = data_dict["origin_segment"]    
                 
-            np.save(pred_save_path, pred)
+            #np.save(pred_save_path, pred)
             
             # Compute metrics    
             mse = np.mean((pred - segment) ** 2)    
@@ -1627,7 +1627,7 @@ class HeatmapTester(TesterBase):
 
         logger.info(    
             f"Val result: MSE/MAE {mse_meter.avg:.6f}/{mae_meter.avg:.6f}"    
-        )    
+        ) 
  
         # Save all results to JSON file
         results_json_path = os.path.join(save_path, "predictions.json")

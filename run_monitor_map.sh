@@ -12,4 +12,5 @@ python /workspace/application/monitor.py \
     --seg-weight /workspace/application/weights/segmentator_best.pth \
     --bond-config /workspace/application/configs/Pt_map_app.py \
     --bond-weight /workspace/application/weights/heatmap_best_f1.pth \
-    --check-interval 10
+    --check-interval 10 \
+    --prod

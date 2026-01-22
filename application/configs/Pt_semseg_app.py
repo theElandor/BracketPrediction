@@ -1,7 +1,7 @@
-"""    
+"""
 Configuration to train a IOS semantic segmentator
-"""    
-_base_ = ["default_runtime.py"]  
+"""
+_base_ = ["default_runtime.py"]
   
 # -----------------------------  
 # Misc settings
@@ -13,15 +13,14 @@ mix_prob = 0
 empty_cache = False
 enable_amp = True
  
-# -----------------------------  
-# Wandb settings  
-# -----------------------------  
+# -----------------------------
+# Wandb settings
+# -----------------------------
 enable_wandb = True
-wandb_project = "bracket_point_prediction"  
-  
+wandb_project = "bracket_point_prediction"
 # -----------------------------  
-# Model settings  
-# -----------------------------  
+# Model settings
+# -----------------------------
 model = dict(
     type="DefaultSegmentorV2",
     num_classes = num_classes,
@@ -39,13 +38,13 @@ model = dict(
         enable_flash=False,
         cls_mode=False,
     ),
-    criteria=[  
+    criteria=[
         dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=ignore_index),
     ],
 )
-# -----------------------------  
-# Dataset settings  
-# -----------------------------    
+# -----------------------------
+# Dataset settings
+# -----------------------------
 dataset_type = "IosDataset"
 data_root =  "" # defined in the main program arguments
 feat_keys = ["coord"]
@@ -61,7 +60,7 @@ data = dict(
     ],
     train = dict(),
     val = dict(),
-    test=dict(    
+    test=dict(
         type=dataset_type,
         split="test",
         fold=fold,
@@ -93,15 +92,15 @@ data = dict(
 )
    
 # -----------------------------
-# Hooks  
+# Hooks
 # -----------------------------
-hooks = [  
-    dict(type="CheckpointLoader"),  
-    dict(type="ModelHook"),  
-    dict(type="IterationTimer", warmup_iter=2),  
-    dict(type="InformationWriter"),  
-    dict(type="SemSegEvaluator"),  
-    dict(type="CheckpointSaver", save_freq=None),  
-    dict(type="PreciseEvaluator", test_last=False),  
+hooks = [
+    dict(type="CheckpointLoader"),
+    dict(type="ModelHook"),
+    dict(type="IterationTimer", warmup_iter=2),
+    dict(type="InformationWriter"),
+    dict(type="SemSegEvaluator"),
+    dict(type="CheckpointSaver", save_freq=None),
+    dict(type="PreciseEvaluator", test_last=False),
 ]
 test = dict(type="SemSegTester")
