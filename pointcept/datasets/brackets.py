@@ -32,7 +32,7 @@ class BracketPointDataset(DefaultDataset):
         test_mode=False,
         test_cfg=None,
         loop=1,
-        fold = 1, # fold to use
+        fold = None, # fold to use
         oversample ={},
     ):
         self.fold = fold
@@ -62,11 +62,11 @@ class BracketPointDataset(DefaultDataset):
             print(f"Loaded {len(file_names)} samples from data_root (fold=None)")
             return file_names
         
-        fold_file = os.path.join(self.data_root, f"split_{self.fold}.json")
+        fold_file = os.path.join(self.data_root, f"fold_{self.fold}.json")
         if not os.path.exists(fold_file):
             raise FileNotFoundError(
-                f"Split file not found: {fold_file}\n"
-                f"Please run the split generation script first to create split_{self.fold}.json"
+                f"Fold file not found: {fold_file}\n"
+                f"Please run the split generation script first to create fold_{self.fold}.json"
             )
         with open(fold_file, 'r') as f:
             split_data = json.load(f)

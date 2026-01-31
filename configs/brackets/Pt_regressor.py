@@ -1,5 +1,5 @@
-"""  
-Configuration file for Bracket Point Prediction with Voxel-based Backbone
+"""
+Simple point regressor with PointTransformerV3 backbone (encoder only).
 """  
   
 _base_ = ["../_base_/default_runtime.py"]
@@ -24,11 +24,10 @@ wandb_project = "bracket_point_prediction"
 # -----------------------------
 
 model = dict(
-    type="VoxelBracketPredictor",
+    type="LandmarkPredictor",
     backbone=dict(
         type="PT-v3m1", 
-        in_channels=4,
-        #in_channels = 3,
+        in_channels = 3,
         enc_channels=(32, 64, 128, 256, 512),
         enc_num_head=(2, 4, 8, 16, 32),
         dec_channels=(32, 32, 64, 96),
@@ -39,22 +38,21 @@ model = dict(
     ),
     backbone_out_channels=512,
     output_dim=3,
-    # testing weights
-    mae_weight = 1
 )
 # -----------------------------
 # Optimizer & Scheduler
 # -----------------------------
-epoch = 30
-eval_epoch = 30 # Set equal to epoch for single training run
+
+epoch = 80
+eval_epoch = 80
 clip_grad = 1.0
 
-optimizer = dict(type="AdamW", lr=0.0003, weight_decay=0.005)  
-scheduler = dict(  
-    type="OneCycleLR",  
-    max_lr=optimizer["lr"],  # References the optimizer's lr  
-    pct_start=0.15,
-    anneal_strategy="cos", 
+optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)
+scheduler = dict(
+    type="OneCycleLR",
+    max_lr=optimizer["lr"],
+    pct_start=0.10,
+    anneal_strategy="cos",
     div_factor=10.0,
     final_div_factor=100.0,
 )
@@ -63,23 +61,17 @@ scheduler = dict(
 # Dataset settings
 # -----------------------------  
 dataset_type = "BracketPointDataset"  
-data_root = "/work/grana_maxillo/Mlugli/Brackets"  
-fold = 1 # Fold to use
-feat_keys = ["coord", "orientation"]
-#feat_keys = ["coord"]
+data_root = "/work/grana_maxillo/Mlugli/BracketsV1"  
+feat_keys = ["coord"]
 index_valid_keys = ["coord", "color", "normal", "superpoint", "strength", "segment", "instance", "orientation"]
 grid_size = 0.005
-# Custom augmentations are the same as the standard
-# pointcept augmentations but they apply the transform
-# also to the GT point, so that it is rotated/flipped/shifted
-# together with the coordinates.
+
 data = dict(
     train=dict(
         type=dataset_type,
         split="train",
         debug=False,
         data_root=data_root,
-        fold=fold,
         transform=[
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
@@ -89,9 +81,6 @@ data = dict(
             dict(
                 type='CustomRandomShift',
                 shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
-            # need to add this so that also the orientation map
-            # is downsampled together with the coordinates during
-            # the grid sample procedure.
             dict(
                 type="Update",  
                 keys_dict={"index_valid_keys": index_valid_keys}  
@@ -114,9 +103,8 @@ data = dict(
  
     val=dict(
         type=dataset_type,
-        split="test",
+        split="val",
         data_root=data_root,
-        fold=fold,
         transform=[
             dict(
                 type="Update",  
@@ -142,7 +130,6 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        fold=fold,
         split="test",
         test_mode=True,
         transform = [

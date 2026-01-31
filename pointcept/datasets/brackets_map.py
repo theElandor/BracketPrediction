@@ -32,7 +32,7 @@ class BracketMapDataset(DefaultDataset):
         test_mode=False,
         test_cfg=None,
         loop=1,
-        fold = 6, # fold to use
+        fold=None,
     ):
         self.fold = fold
         super().__init__(
@@ -52,7 +52,7 @@ class BracketMapDataset(DefaultDataset):
     def get_data_list(self):
 
         """Load list of data samples from fold JSON files, with path mapping."""
-        fold_file = os.path.join(self.data_root, f"split_{self.fold}.json")
+        fold_file = os.path.join(self.data_root, f"fold_{self.fold}.json")
         if not os.path.exists(fold_file):
             raise FileNotFoundError(
                 f"Split file not found: {fold_file}\n"
@@ -75,22 +75,15 @@ class BracketMapDataset(DefaultDataset):
         file_names = []
         for file_path in file_paths:
             if file_path.endswith('.stl'):
-                # Replace path prefixes to match cleaned data structure
-                mapped_path = file_path.replace(
-                    "brackets_1_melted/flattened/", "cleaned_1/"
-                ).replace(
-                    "brackets_3_melted/flattened/", "cleaned_3/"
-                )
-                
                 # Check if the STL file exists in data_root
-                full_stl_path = os.path.join(self.data_root, mapped_path)
+                full_stl_path = os.path.join(self.data_root, file_path)
                 if not os.path.exists(full_stl_path):
                     continue
                 
                 # Check if corresponding *_softlabel.npy file exists
-                npy_path = os.path.join(self.data_root, mapped_path.replace('.stl', '_softlabel.npy'))
+                npy_path = os.path.join(self.data_root, file_path.replace('.stl', '_softlabel.npy'))
                 if os.path.exists(npy_path):
-                    file_names.append(mapped_path)
+                    file_names.append(file_path)
         
         print(f"Loaded {len(file_names)} samples from fold {self.fold}, split {self.split}")
         print(f"  Patients: {len(split_data[split_key]['patient_ids'])}")

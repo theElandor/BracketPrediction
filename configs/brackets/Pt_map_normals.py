@@ -1,5 +1,5 @@
-"""    
-Configuration file for Bracket Point Prediction with Voxel-based Backbone  
+"""
+Same as Pt_map.py but takes in input 6 channels (3d coordinates + normal vectors).
 """
 
 _base_ = ["../_base_/default_runtime.py"]
@@ -43,43 +43,42 @@ model = dict(
 # -----------------------------  
 # Optimizer & Scheduler
 # -----------------------------  
-epoch = 50
-eval_epoch = 50 # Set equal to epoch for single training run
+
+epoch = 80
+eval_epoch = 80
 clip_grad = 1.0
 
-optimizer = dict(type="AdamW", lr=0.0003, weight_decay=0.005)  
-scheduler = dict(  
-    type="OneCycleLR",  
-    max_lr=optimizer["lr"],  # References the optimizer's lr  
-    pct_start=0.15,
-    anneal_strategy="cos", 
+optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)
+scheduler = dict(
+    type="OneCycleLR",
+    max_lr=optimizer["lr"],
+    pct_start=0.10,
+    anneal_strategy="cos",
     div_factor=10.0,
     final_div_factor=100.0,
 )
 
-# -----------------------------  
+# -----------------------------
 # Dataset settings
-# -----------------------------    
+# -----------------------------
 dataset_type = "BracketMapDataset"
-data_root = "/work/grana_maxillo/Mlugli/BracketsHeatmaps"
+data_root = "/work/grana_maxillo/Mlugli/BracketsV1"
 feat_keys = ["coord", "normal"]
 grid_size = 0.005
-fold = 1
 
 data = dict(
     train=dict(
         type=dataset_type,
         split="train", 
-        fold=fold,
         debug=False,
         data_root=data_root,
         transform=[  
-            dict(type='CustomRandomRotate', angle=[-0.05, 0.05], center=[0, 0, 0], axis='z', p=0.5),
-            dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
-            dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
-            dict(type='CustomRandomScale', scale=[0.9, 1.1]),
-            dict(type='CustomRandomFlip', p=0.5),
-            dict(type='CustomRandomShift', shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
+            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='z', p=0.5),
+            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
+            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
+            dict(type='RandomScale', scale=[0.9, 1.1]),
+            dict(type='RandomFlip', p=0.5),
+            dict(type='RandomShift', shift=((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05))),
             dict(
                 type='GridSample',
                 grid_size=grid_size,
@@ -97,8 +96,7 @@ data = dict(
     
     val=dict(
         type=dataset_type,
-        split="test",
-        fold=fold,
+        split="val",
         data_root=data_root,
         transform=[
             dict(type="Copy", keys_dict={"segment": "origin_segment"}),  
@@ -123,7 +121,6 @@ data = dict(
     test=dict(    
         type="BracketMapDataset",
         split="test",
-        fold=fold,
         data_root=data_root,
         test_mode=True,
         test_cfg=dict(

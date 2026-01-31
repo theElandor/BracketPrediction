@@ -1,6 +1,15 @@
-"""    
-Configuration to train a IOS semantic segmentator
-"""    
+"""
+Configuration to train a IOS semantic segmentator.
+The model is trained in cross entropy, and it produces a heatmap
+of values with the same dimensionality of the input.
+The model expects the Intra Oral Scan in a specific (standard) orientation:
++ Z axis pointing towards the patient's skull;
++ X axis pointing towards the patient's right;
++ Y axis pointing outwards;
+Moreover, it assumes that upper (maxillary) scans are rotated of 180 degrees (additionally)
+with the respect to the standard orientation. (Tooth 48 overlaps with tooth 28).
+Except for the orientation, no additional preprocessing is needed, since normalization is performed online.
+"""
 _base_ = ["../_base_/default_runtime.py"]  
   
 # -----------------------------  
@@ -86,7 +95,7 @@ data = dict(
         data_root=data_root,
         ignore_index = ignore_index,
         transform=[
-            dict(type='RandomRotate', angle=[-0.05, 0.05], center=[0, 0, 0], axis='z', p=0.5),  
+            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='z', p=0.5),  
             dict(type='RandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),  
             dict(type='RandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),  
             dict(type='RandomScale', scale=[0.9, 1.1]),  
@@ -165,9 +174,9 @@ data = dict(
 )
    
 # -----------------------------
-# Hooks  
+# Hooks
 # -----------------------------
-hooks = [  
+hooks = [
     dict(type="CheckpointLoader"),  
     dict(type="ModelHook"),  
     dict(type="IterationTimer", warmup_iter=2),  

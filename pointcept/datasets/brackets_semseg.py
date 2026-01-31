@@ -1,6 +1,5 @@
 """
-Brackets dataset
-
+Intra Oral Scan segmentator dataset.
 Author: Matteo Lugli (283122@studenti.unimore.it)
 Please cite our work if the code is helpful to you.
 """
