@@ -1,5 +1,5 @@
-"""    
-Configuration file for Bracket Point Prediction with Voxel-based Backbone  
+"""
+HeatmapRegressor model using PointTransformerv3 backbone (encoder + decoder).
 """
 
 _base_ = ["../_base_/default_runtime.py"]
@@ -43,8 +43,8 @@ model = dict(
 # -----------------------------  
 # Optimizer & Scheduler
 # -----------------------------  
-epoch = 30
-eval_epoch = 30
+epoch = 80
+eval_epoch = 80
 clip_grad = 1.0
 
 optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)
@@ -61,20 +61,18 @@ scheduler = dict(
 # Dataset settings
 # -----------------------------    
 dataset_type = "BracketMapDataset"
-data_root = "/work/grana_maxillo/Mlugli/BracketsHeatmaps"
+data_root = "/work/grana_maxillo/Mlugli/BracketsV1"
 feat_keys = ["coord"]
 grid_size = 0.005
-fold = 1
 
 data = dict(
     train=dict(
         type=dataset_type,
         split="train", 
-        fold=fold,
         debug=False,
         data_root=data_root,
-        transform=[  
-            dict(type='RandomRotate', angle=[-0.05, 0.05], center=[0, 0, 0], axis='z', p=0.5),
+        transform=[
+            dict(type='RandomRotate', angle=[-0.1, 0.1], axis='z', p=0.5),
             dict(type='RandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
             dict(type='RandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
             dict(type='RandomScale', scale=[0.9, 1.1]),
@@ -97,8 +95,7 @@ data = dict(
     
     val=dict(
         type=dataset_type,
-        split="test",
-        fold=fold,
+        split="val",
         data_root=data_root,
         transform=[  
             dict(type="Copy", keys_dict={"segment": "origin_segment"}),  
@@ -123,7 +120,6 @@ data = dict(
     test=dict(    
         type="BracketMapDataset",
         split="test",
-        fold=fold,
         data_root=data_root,
         test_mode=True,
         test_cfg=dict(

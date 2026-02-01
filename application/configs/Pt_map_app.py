@@ -45,7 +45,6 @@ dataset_type = "BracketMapDataset"
 data_root = "/work/grana_maxillo/Mlugli/BracketsHeatmaps"
 feat_keys = ["coord"]
 grid_size = 0.005
-fold = None
 production = True
 
 data = dict(
@@ -56,7 +55,6 @@ data = dict(
     test=dict(    
         type="BracketMapDataset",
         split="test",
-        fold=fold,
         data_root=data_root,
         test_mode=True,
         production=True,

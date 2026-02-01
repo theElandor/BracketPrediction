@@ -10,21 +10,15 @@ num_worker = 4
 mix_prob = 0
 empty_cache = False
 enable_amp = True
-# -----------------------------
-# Wandb settings
-# -----------------------------
-enable_wandb = True
-wandb_project = "bracket_point_prediction"
+
 # -----------------------------
 # Model setting
 # -----------------------------
 model = dict(
-    type="VoxelBracketPredictor",
+    type="LandmarkPredictor",
     backbone=dict(
         type="PT-v3m1", 
         in_channels=3,
-        #enc_channels=(16, 32, 48, 64, 128),
-        #enc_num_head=(1, 2, 3, 4, 8),
         enc_channels=(32, 64, 128, 256, 512),
         enc_num_head=(2, 4, 8, 16, 32),
         dec_channels=(32, 32, 64, 96),
@@ -35,15 +29,12 @@ model = dict(
     ),
     backbone_out_channels=512,
     output_dim=3,
-    # testing weights
-    mae_weight = 1,
 )
 # -----------------------------
 # Dataset settings
 # -----------------------------  
 dataset_type = "BracketPointDataset"  
 data_root = ""  # defined in main program
-fold = None # will run on data found in folder
 feat_keys = ["coord"]
 grid_size = 0.005
 data = dict(
@@ -53,7 +44,6 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        fold=fold,
         split="test",
         test_mode=True,
         test_cfg=dict(

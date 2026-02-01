@@ -1459,7 +1459,7 @@ class BracketTester_v2(TesterBase):
                 self.logger.info(log_msg)
         
         # Save all predictions to single JSON file
-        predictions_file = os.path.join(save_path, "predictions.json")  
+        predictions_file = os.path.join(save_path, "results.json")  
         with open(predictions_file, "w") as f:  
             json.dump(predictions_dict, f, indent=4)  
         

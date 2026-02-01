@@ -1,5 +1,5 @@
 """  
-Configuration file for Bracket Point Prediction with Voxel-based Backbone
+Same as Pt_regressor.py but takes in input 6 channels instead of 3.
 """  
   
 _base_ = ["../_base_/default_runtime.py"]
@@ -24,7 +24,7 @@ wandb_project = "bracket_point_prediction"
 # -----------------------------
 
 model = dict(
-    type="VoxelBracketPredictor",
+    type="LandmarkPredictor",
     backbone=dict(
         type="PT-v3m1", 
         in_channels=6, # 3 channels + normals
@@ -38,22 +38,20 @@ model = dict(
     ),
     backbone_out_channels=512,
     output_dim=3,
-    # testing weights
-    mae_weight = 1
 )
 # -----------------------------
 # Optimizer & Scheduler
 # -----------------------------
-epoch = 30
-eval_epoch = 30 # Set equal to epoch for single training run
+epoch = 80
+eval_epoch = 80 # Set equal to epoch for single training run
 clip_grad = 1.0
 
-optimizer = dict(type="AdamW", lr=0.0003, weight_decay=0.005)  
-scheduler = dict(  
-    type="OneCycleLR",  
-    max_lr=optimizer["lr"],  # References the optimizer's lr  
-    pct_start=0.15,
-    anneal_strategy="cos", 
+optimizer = dict(type="AdamW", lr=0.0001, weight_decay=0.005)
+scheduler = dict(
+    type="OneCycleLR",
+    max_lr=optimizer["lr"],
+    pct_start=0.10,
+    anneal_strategy="cos",
     div_factor=10.0,
     final_div_factor=100.0,
 )
@@ -62,8 +60,7 @@ scheduler = dict(
 # Dataset settings
 # -----------------------------  
 dataset_type = "BracketPointDataset"  
-data_root = "/work/grana_maxillo/Mlugli/Brackets"  
-fold = 1 # Fold to use
+data_root = "/work/grana_maxillo/Mlugli/BracketsV1"  
 feat_keys = ["coord", "normal"]
 index_valid_keys = ["coord", "color", "normal", "superpoint", "strength", "segment", "instance", "orientation"]
 grid_size = 0.005
@@ -77,7 +74,6 @@ data = dict(
         split="train",
         debug=False,
         data_root=data_root,
-        fold=fold,
         transform=[
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='x', p=0.5),
             dict(type='CustomRandomRotate', angle=[-0.1, 0.1], axis='y', p=0.5),
@@ -109,9 +105,8 @@ data = dict(
  
     val=dict(
         type=dataset_type,
-        split="test",
+        split="val",
         data_root=data_root,
-        fold=fold,
         transform=[
             dict(
                 type="Update",  
@@ -137,7 +132,6 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        fold=fold,
         split="test",
         test_mode=True,
         transform = [
