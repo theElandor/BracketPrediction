@@ -52,8 +52,7 @@ class ScanMonitor:
         bond_config: Path,
         bond_weight: Path,
         check_interval: int = 10,
-        status_file: str = "processing_status.json",
-        no_visuals: bool = False
+        status_file: str = "processing_status.json"
     ):
         self.data_root = Path(data_root)
         self.seg_config = Path(seg_config)
@@ -62,7 +61,6 @@ class ScanMonitor:
         self.bond_weight = Path(bond_weight)
         self.check_interval = check_interval
         self.status_file = self.data_root / status_file  # Status file inside data_root
-        self.no_visuals = no_visuals
         self.prep = Preprocessor()
 
         # Validate paths
@@ -258,7 +256,6 @@ class ScanMonitor:
                 cfg=self.seg_cfg,
                 model=self.seg_model,
                 data_folder=patient_dir,
-                visualize=not self.no_visuals
             )
             
             if success:
@@ -288,7 +285,6 @@ class ScanMonitor:
                 cfg=self.bond_cfg,
                 model=self.bond_model,
                 data_folder=patient_dir,
-                visualize=not self.no_visuals
             )
             
             if success:
@@ -402,6 +398,34 @@ class ScanMonitor:
         self.status[patient_id]["processed_files"] = list(set(self.status[patient_id]["processed_files"]))
         self.save_status()
         
+        # ===== RUN VISUALIZATIONS AFTER STATUS UPDATE =====
+        print(f"\n{'='*80}")
+        print(f"{'='*80}\n")
+        try:
+            print(f"\n{'='*80}")
+            print(f"📊 Running visualizations for patient {patient_id}")
+            print(f"{'='*80}\n")
+            
+            from segment_scan import visualize_segmentation
+            from bond import visualize_bond_predictions
+            
+            # Visualize segmentation results
+            print(f"📈 Creating segmentation visualizations...")
+            try:
+                visualize_segmentation(patient_dir)
+            except Exception as e:
+                print(f"  ⚠️  Segmentation visualization failed: {e}")
+            
+            # Visualize bond predictions
+            print(f"📈 Creating bond prediction visualizations...")
+            try:
+                visualize_bond_predictions(patient_dir)
+            except Exception as e:
+                print(f"  ⚠️  Bond visualization failed: {e}")
+                
+        except Exception as e:
+            print(f"  ⚠️  Error during visualization: {e}")
+        
         print(f"\n{'='*80}")
         print(f"✅ PIPELINE COMPLETED for patient {patient_id}")
         print(f"   Processed files: {unprocessed_files}")
@@ -453,7 +477,6 @@ def main():
     parser.add_argument("--bond-weight",type=str,required=True,help="Path to bond prediction model weights")
     parser.add_argument("--check-interval",type=int,default=10,help="Interval in seconds between checks (default: 3)")
     parser.add_argument("--status-file",type=str,default="processing_status.json",help="Name of status file (default: processing_status.json)")
-    parser.add_argument("--prod", action="store_true", help="Run in production mode (no visuals)") 
     parser.add_argument("--debug", action="store_true", help="Wait for debugger to attach")
     args = parser.parse_args()
     if args.debug:
@@ -469,8 +492,7 @@ def main():
         bond_config=args.bond_config,
         bond_weight=args.bond_weight,
         check_interval=args.check_interval,
-        status_file=args.status_file,
-        no_visuals=args.prod
+        status_file=args.status_file
     ) 
     monitor.run()
 

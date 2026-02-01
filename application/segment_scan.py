@@ -65,7 +65,7 @@ def normalize(points: np.ndarray, flip:bool=False) -> tuple[np.ndarray, np.ndarr
     return normalized_points, centroid, scale
 
 
-def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, visualize: bool = True):
+def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path):
     """
     Postprocess segmentation results: split by tooth, normalize, and save.
     
@@ -75,18 +75,13 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
         output_dir: Output directory for processed teeth
     """
     import pyvista as pv
-    from visualizers import create_segmentation_visualization
     
     print(f"Postprocessing {stl_file.name}...")
     
     # Load mesh and mask
     mesh = pv.read(stl_file)
     mask = np.load(mask_file)
-    if visualize:
-        try:
-            create_segmentation_visualization(mesh, mask, stl_file.stem, output_dir)
-        except Exception as e:
-            print(f"  ⚠️  Visualization failed (continuing anyway): {e}") 
+    
     if len(mask) != len(mesh.points):
         print(f"Warning: Mask length ({len(mask)}) doesn't match points ({len(mesh.points)})")
         return
@@ -153,7 +148,40 @@ def postprocess_segmentation(stl_file: Path, mask_file: Path, output_dir: Path, 
         print(f"    JSON: {json_output_path}")
 
 
-def run_segmentation_with_model(cfg, model, data_folder: Path, visualize: bool = True) -> bool:
+def visualize_segmentation(data_folder: Path):
+    """
+    Create visualizations for segmentation results.
+    Call this AFTER postprocessing is complete.
+    """
+    from visualizers import create_segmentation_visualization
+    import pyvista as pv
+    
+    print("\n" + "="*80)
+    print("Creating segmentation visualizations...")
+    print("="*80 + "\n")
+    
+    output_folder = Path(data_folder) / "output_seg"
+    data_path = Path(data_folder)
+    
+    # Find STL files in data folder
+    stl_files = list(data_path.glob("*.stl"))
+    
+    for stl_file in stl_files:
+        # Find corresponding prediction mask
+        mask_file = output_folder / "result" / f"{stl_file.stem}_pred.npy"
+        
+        if not mask_file.exists():
+            continue
+        
+        try:
+            mesh = pv.read(stl_file)
+            mask = np.load(mask_file)
+            create_segmentation_visualization(mesh, mask, stl_file.stem, output_folder)
+        except Exception as e:
+            print(f"  ⚠️  Visualization failed for {stl_file.name}: {e}")
+
+
+def run_segmentation_with_model(cfg, model, data_folder: Path) -> bool:
     """
     Run segmentation with a pre-loaded model.
     
@@ -161,7 +189,6 @@ def run_segmentation_with_model(cfg, model, data_folder: Path, visualize: bool =
         cfg: Configuration object
         model: Pre-loaded segmentation model
         data_folder: Path to data folder containing STL files
-        visualize: Whether to generate visualizations
         
     Returns:
         bool: True if successful, False otherwise
@@ -171,7 +198,6 @@ def run_segmentation_with_model(cfg, model, data_folder: Path, visualize: bool =
         cfg._cfg_dict["data_root"] = str(data_folder)
         cfg._cfg_dict["save_path"] = str(Path(data_folder) / "output_seg")
         cfg._cfg_dict["data"]["test"]["data_root"] = str(data_folder)
-        cfg.no_visuals = not visualize
         
         os.makedirs(cfg.save_path, exist_ok=True)
         
@@ -201,11 +227,12 @@ def run_segmentation_with_model(cfg, model, data_folder: Path, visualize: bool =
                 print(f"Warning: No prediction found for {stl_file.name}, skipping...")
                 continue
             
-            postprocess_segmentation(stl_file, mask_file, output_folder, visualize=visualize)
+            postprocess_segmentation(stl_file, mask_file, output_folder)
         
         print("\n" + "="*80)
         print("Postprocessing complete!")
         print("="*80)
+        print("Note: Visualization will be called separately after status update.")
         
         return True
         
@@ -230,7 +257,6 @@ def main_worker(cfg):
     
     data_folder = Path(cfg.data_root)
     output_folder = Path(cfg.save_path)
-    visualize = not cfg.no_visuals
     
     # Find STL files in data folder
     stl_files = list(data_folder.glob("*.stl"))
@@ -243,16 +269,16 @@ def main_worker(cfg):
             print(f"Warning: No prediction found for {stl_file.name}, skipping...")
             continue
         
-        postprocess_segmentation(stl_file, mask_file, output_folder, visualize=visualize)
+        postprocess_segmentation(stl_file, mask_file, output_folder)
     
     print("\n" + "="*80)
     print("Postprocessing complete!")
     print("="*80)
+    print("Note: Visualization will be called separately after status update.")
 
 
 def segment_scan():
     parser = default_argument_parser()
-    parser.add_argument("--no-visuals", action="store_true", help="Do not generate visualizations")
     args = parser.parse_args()
 
     if args.debug:
@@ -265,7 +291,6 @@ def segment_scan():
     cfg._cfg_dict["data_root"] = args.options["data_folder"]
     cfg._cfg_dict["save_path"] = str(Path(args.options["data_folder"]) / "output_seg") 
     cfg._cfg_dict["data"]["test"]["data_root"] = args.options["data_folder"]
-    cfg.no_visuals = args.no_visuals
     launch(
         main_worker,
         num_gpus_per_machine=args.num_gpus,

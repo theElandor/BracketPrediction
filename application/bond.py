@@ -29,6 +29,7 @@ from pointcept.engines.test import TESTERS
 from pointcept.engines.launch import launch
 from matplotlib.lines import Line2D
 import torch
+import trimesh
 
 def process_tooth_predictions(mesh, 
                               bracket_pred:np.ndarray, 
@@ -38,8 +39,7 @@ def process_tooth_predictions(mesh,
                               fdi:int, 
                               output_dir:Path, 
                               tooth_key:str, 
-                              teeth_path:Path, 
-                              visualize:bool = True):
+                              teeth_path:Path):
     """
     Creates three 2D views (XY, XZ, YZ) of the mesh with predicted points.
     Projects predictions onto mesh surface using nearest point method. 
@@ -53,8 +53,6 @@ def process_tooth_predictions(mesh,
         output_dir: directory to save the PNG file
         teeth_path: path to the teeth directory containing transformation JSON files
     """
-    import trimesh
-    from visualizers import plot_teeth
     
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -143,29 +141,22 @@ def process_tooth_predictions(mesh,
             "zAxis": (bracket_denorm + v_normal_denorm).tolist(),
         },
     }
-    if visualize:
-        try:
-            plot_teeth(bracket, incisal, outer, v_io, v_perp,
-                       vertices, patient_id, fdi, output_dir)
-        except Exception as e:
-            print(f"  ⚠️  Tooth visualization failed: {e}")
     return json_data
 
-def postprocess_predictions(data_folder:Path, visualize:bool = True):
+def postprocess_predictions(data_folder:Path):
     """
-    Post-processes predictions and creates visualizations.
+    Post-processes predictions without visualization.
+    This function ONLY processes data and saves JSON files.
+    Call visualize_bond_predictions separately after status update.
     
     Args:
         data_folder: Path to the data folder containing predictions
-        visualize: toggles visualization
     """
-    import trimesh
-    from visualizers import plot_jaw
     
     output_reg_path = data_folder / "output_reg" / "results"
     teeth_path = data_folder / "output_seg" / "teeth"
     viz_dir = data_folder /  "output_reg" / "plots"
-    print("\n=== Starting Post-Processing and Visualization ===")
+    print("\n=== Starting Post-Processing (No visualization here) ===")
     pred_file = output_reg_path / "predictions.json"
     print(f"Loading predictions from: {pred_file.name}")
     with open(pred_file, 'r') as f: all_predictions = json.load(f)
@@ -197,8 +188,7 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
             fdi=fdi,
             output_dir=viz_dir,
             tooth_key=tooth_key,
-            teeth_path=teeth_path,
-            visualize=visualize
+            teeth_path=teeth_path
         )
         if points_data:
             all_points_data[tooth_key] = points_data
@@ -276,17 +266,137 @@ def postprocess_predictions(data_folder:Path, visualize:bool = True):
     rotated_output_path = output_reg_path / "projected_points_rotated.json"
     with open(rotated_output_path, 'w') as f: json.dump(rotated_points, f, indent=4)
     print(f"\n💾 Saved rotated projected points to: {rotated_output_path}")
-    print(f"\n✅ Post-processing complete. Visualizations saved to: {viz_dir}")
-    if visualize: 
-        # ============= Debug visualizations ==================
+    print(f"\n✅ Post-processing complete.")
+
+
+def visualize_tooth_predictions(data_folder: Path):
+    """
+    Create individual tooth visualizations.
+    Call this AFTER postprocessing and status update.
+    """
+    from visualizers import plot_teeth
+    
+    print("\n" + "="*80)
+    print("Creating individual tooth visualizations...")
+    print("="*80 + "\n")
+    
+    output_reg_path = data_folder / "output_reg" / "results"
+    teeth_path = data_folder / "output_seg" / "teeth"
+    viz_dir = data_folder / "output_reg" / "plots"
+    
+    # Check if predictions exist
+    pred_file = output_reg_path / "predictions.json"
+    if not pred_file.exists():
+        print(f"⚠️ Predictions file not found: {pred_file}")
+        return
+    
+    with open(pred_file, 'r') as f:
+        all_predictions = json.load(f)
+    
+    for tooth_key, predictions in all_predictions.items():
         try:
-            plot_jaw(data_folder, raw_scan=False)
-            plot_jaw(data_folder, raw_scan=True)
+            # Parse tooth_key: expected format "STEM_lower_0002_FDI_47"
+            parts = tooth_key.split('_')
+            patient_idx = parts.index('lower') if 'lower' in parts else parts.index('upper')
+            patient_id = parts[patient_idx + 1]
+            fdi_idx = parts.index('FDI')
+            fdi = int(parts[fdi_idx + 1])
+            
+            stl_file = teeth_path / f"{tooth_key}.stl"
+            if not stl_file.exists():
+                continue
+            
+            mesh = trimesh.load_mesh(stl_file)
+            vertices = mesh.vertices
+            
+            # Get predictions (normalized coordinates from the model)
+            bracket_pred = np.array(predictions.get('bracket'))
+            incisal_pred = np.array(predictions.get('incisal'))
+            outer_pred = np.array(predictions.get('outer'))
+            
+            # Project onto surface
+            predictions_list = [bracket_pred, incisal_pred, outer_pred]
+            projected_points = []
+            bracket_face_id = None
+            for pred in predictions_list:
+                closest_points, distance, faces = mesh.nearest.on_surface([pred])
+                projected_points.append(closest_points[0])
+                if bracket_face_id is None:
+                    bracket_face_id = faces[0]
+            
+            bracket, incisal, outer = projected_points
+            
+            # Compute normal vector
+            # Load transformation for molar correction
+            transform_file = teeth_path / f"{tooth_key}.json"
+            scaling = 1.0
+            if transform_file.exists():
+                with open(transform_file, 'r') as f:
+                    transform_data = json.load(f)
+                    scaling = float(transform_data.get('scaling', 1.0))
+            
+            if fdi in [16, 17, 26, 27, 36, 37, 46, 47]:
+                bracket_mm = bracket / scaling
+                vertices_mm = vertices / scaling
+                distances = np.linalg.norm(vertices_mm - bracket_mm, axis=1)
+                nearby_indices = np.where(distances <= 1.5)[0]
+                nearby_normals = mesh.vertex_normals[nearby_indices]
+                v_normal = np.mean(nearby_normals, axis=0)
+            else:
+                v_normal = mesh.face_normals[bracket_face_id]
+            
+            v_normal = v_normal / np.linalg.norm(v_normal)
+            
+            # Get axis between incisal and outer points
+            v_io = outer - incisal
+            v_io = v_io / np.linalg.norm(v_io)
+            
+            # Get perpendicular axis
+            v_perp = np.cross(v_normal, v_io)
+            v_perp = v_perp / np.linalg.norm(v_perp)
+            
+            # Create individual tooth plot
+            plot_teeth(bracket, incisal, outer, v_io, v_perp, vertices, patient_id, fdi, viz_dir)
         except Exception as e:
-            print(f"  ⚠️  Jaw visualization failed: {e}")
+            print(f"  ⚠️  Failed to visualize tooth {tooth_key}: {e}")
+    
+    print("✅ Individual tooth visualizations complete.\n")
 
 
-def run_bond_with_model(cfg, model, data_folder: Path, visualize: bool = True) -> bool:
+def visualize_bond_predictions(data_folder: Path):
+    """
+    Create visualizations for bond prediction results.
+    Call this AFTER postprocessing is complete.
+    """
+    from visualizers import plot_jaw, plot_teeth
+    
+    print("\n" + "="*80)
+    print("Creating bond prediction visualizations...")
+    print("="*80 + "\n")
+    
+    output_reg_path = data_folder / "output_reg" / "results"
+    viz_dir = data_folder / "output_reg" / "plots"
+    teeth_path = data_folder / "output_seg" / "teeth"
+    
+    # Check if predictions exist
+    pred_file = output_reg_path / "predictions.json"
+    if not pred_file.exists():
+        print(f"⚠️ Predictions file not found: {pred_file}")
+        return
+    
+    try:
+        # ============= Call separate tooth visualization ==================
+        visualize_tooth_predictions(data_folder)
+        
+        # ============= Jaw visualizations ==================
+        plot_jaw(data_folder, raw_scan=False)
+        plot_jaw(data_folder, raw_scan=True)
+        print(f"\n✅ Jaw visualizations complete. Saved to: {viz_dir}")
+    except Exception as e:
+        print(f"  ⚠️  Visualization failed: {e}")
+
+
+def run_bond_with_model(cfg, model, data_folder: Path) -> bool:
     """
     Run bond prediction with a pre-loaded model.
     
@@ -294,7 +404,6 @@ def run_bond_with_model(cfg, model, data_folder: Path, visualize: bool = True) -
         cfg: Configuration object
         model: Pre-loaded bond prediction model
         data_folder: Path to data folder containing segmentation results
-        visualize: Whether to generate visualizations
         
     Returns:
         bool: True if successful, False otherwise
@@ -312,7 +421,6 @@ def run_bond_with_model(cfg, model, data_folder: Path, visualize: bool = True) -
         cfg._cfg_dict["data_root"] = str(teeth_path)
         cfg._cfg_dict["save_path"] = str(output_path)
         cfg._cfg_dict["data"]["test"]["data_root"] = str(teeth_path)
-        cfg.no_visuals = not visualize
         
         os.makedirs(output_path, exist_ok=True)
         
@@ -324,12 +432,12 @@ def run_bond_with_model(cfg, model, data_folder: Path, visualize: bool = True) -
         tester = TESTERS.build(test_cfg)
         tester.test()
         
-        # Add post-processing and visualization after testing
+        # Add post-processing after testing
         print("\n" + "="*60)
         print("Testing complete. Starting post-processing...")
         print("="*60)
         
-        postprocess_predictions(data_folder, visualize=visualize)
+        postprocess_predictions(data_folder)
         
         return True
         
@@ -347,19 +455,18 @@ def main_worker(cfg):
     tester = TESTERS.build(test_cfg)
     tester.test()
     
-    # Add post-processing and visualization after testing
+    # Add post-processing after testing
     print("\n" + "="*60)
     print("Testing complete. Starting post-processing...")
     print("="*60)
     
     # Extract data_folder from save_path
     data_folder = Path(cfg.save_path).parent
-    postprocess_predictions(data_folder, visualize= not cfg.no_visuals)
+    postprocess_predictions(data_folder)
 
 
 def main():
     parser = default_argument_parser()
-    parser.add_argument("--no-visuals", action="store_true", help="Do not generate visualizations")
     args = parser.parse_args()
     if args.debug:
         print("Hello, happy debugging.")
@@ -371,7 +478,6 @@ def main():
     cfg._cfg_dict["data_root"] = str(Path(args.options["data_folder"]) /  "output_seg" / "teeth")
     cfg._cfg_dict["save_path"] = str(Path(args.options["data_folder"]) / "output_reg") 
     cfg._cfg_dict["data"]["test"]["data_root"] = str(Path(args.options["data_folder"]) /  "output_seg" / "teeth")
-    cfg.no_visuals = args.no_visuals
     launch(
         main_worker,
         num_gpus_per_machine=args.num_gpus,
