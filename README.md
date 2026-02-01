@@ -70,7 +70,7 @@ The landmark predictor works on isolated tooth meshes, which can be extracted fr
 + The data_root, which is the absolute path of the data folder. 
   For each sample, the data loader expects:
   1) The stl file of the single tooth, named STEM_lower/upper_ID_FDI_FDI, for example STEM_upper_10_FDI_22.stl.
-  2) The JSON file containing the landmarks. An example is available [here](assets/example_landmarks.json). In our dataset, landmark coordinates are already normalized (after centering and scaling). We additionally provide two values—**translation** and **scaling**—which allow you to convert the landmarks back to the original coordinate space (e.g., for plotting or error evaluation in millimeters).
+  2) The JSON file containing the landmarks. An example is available [here](assets/example_landmarks.json). In our dataset, landmark coordinates are already normalized (after centering and scaling). We additionally provide two values(**translation** and **scaling**) which allow you to convert the landmarks back to the original coordinate space (e.g., for plotting or error evaluation in millimeters).
   3) If you want to train the **heatmap** based model, you also need the softlabels. They are .npy files with the same dimensionality as the input mesh (same number of vertices).
 
 The standard directory structure is the following:
