@@ -114,6 +114,5 @@ python tools/test.py --config-file /homes/mlugli/BracketPrediction/configs/brack
 Some files you can find usefull:
 + A python [script](generate_test_scripts.py) to generate slurm scripts for 5-fold cross validating multiple models;
 + A python [script](generate_train_script.py) to generate slurm scripts to launch testing for your trained models;
-+ Two bash scripts to submit all [train](submit_all_train_jobs.sh) jobs and all [test](submit_all_test_jobs.sh) jobs
 ## 🐋 Production
 WIP

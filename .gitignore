@@ -13,6 +13,8 @@ data
 logs
 application/data
 outputs/
+submit_all_train_jobs.sh
+submit_all_test_jobs.sh
 .vscode
 .idea
 */.DS_Store
